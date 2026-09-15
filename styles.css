@@ -687,6 +687,15 @@ footer p {
     background: linear-gradient(90deg, #a70f5c, #d41472, #ed5d9d);
 }
 
+.auth-card h3 {
+    max-width: calc(100% - 44px);
+    margin: 0 44px 14px 0;
+    color: var(--primary-dark);
+    font-size: clamp(18px, 2.5vw, 22px);
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
 .close-btn {
     position: absolute;
     top: 12px;
@@ -1168,6 +1177,16 @@ body.dark-mode .ai-form select {
 }
 
 @media (max-width: 600px) {
+    .auth-card {
+        padding: 24px 18px 22px;
+    }
+
+    .auth-card h3 {
+        max-width: calc(100% - 38px);
+        margin-right: 38px;
+        font-size: 18px;
+    }
+
     nav {
         padding: 15px;
     }

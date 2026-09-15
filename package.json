@@ -1,0 +1,11 @@
+{
+  "name": "imcc-careerhub",
+  "version": "1.0.0",
+  "private": true,
+  "description": "IMCC Careers Job Marketplace",
+  "scripts": {
+    "build": "node -e \"require('fs').copyFileSync('imcc.html', 'index.html')\"",
+    "dev": "npx serve .",
+    "start": "npx serve ."
+  }
+}

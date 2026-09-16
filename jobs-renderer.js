@@ -64,7 +64,7 @@ function renderJobs() {
 
     categories.forEach(function(categoryGroup) {
         let block = document.createElement('div');
-        block.className = 'category-block';
+        block.className = 'category-block is-collapsed';
         block.dataset.categoryGroup = categoryGroup.category;
 
         let heading = document.createElement('div');
@@ -77,9 +77,9 @@ function renderJobs() {
         let toggleButton = document.createElement('button');
         toggleButton.type = 'button';
         toggleButton.className = 'category-toggle';
-        toggleButton.textContent = 'Hide Jobs';
-        toggleButton.setAttribute('aria-expanded', 'true');
-        toggleButton.setAttribute('aria-label', 'Hide ' + categoryGroup.label + ' jobs');
+        toggleButton.textContent = 'Show Jobs';
+        toggleButton.setAttribute('aria-expanded', 'false');
+        toggleButton.setAttribute('aria-label', 'Show ' + categoryGroup.label + ' jobs');
         toggleButton.addEventListener('click', function(event) {
             event.stopPropagation();
             const collapsed = block.classList.toggle('is-collapsed');

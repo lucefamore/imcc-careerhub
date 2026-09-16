@@ -67,9 +67,27 @@ function renderJobs() {
         block.className = 'category-block';
         block.dataset.categoryGroup = categoryGroup.category;
 
-        let heading = document.createElement('h3');
+        let heading = document.createElement('div');
         heading.className = 'category-heading';
-        heading.textContent = categoryGroup.label;
+
+        let headingTitle = document.createElement('h3');
+        headingTitle.textContent = categoryGroup.label;
+        heading.appendChild(headingTitle);
+
+        let toggleButton = document.createElement('button');
+        toggleButton.type = 'button';
+        toggleButton.className = 'category-toggle';
+        toggleButton.textContent = 'Hide Jobs';
+        toggleButton.setAttribute('aria-expanded', 'true');
+        toggleButton.setAttribute('aria-label', 'Hide ' + categoryGroup.label + ' jobs');
+        toggleButton.addEventListener('click', function(event) {
+            event.stopPropagation();
+            const collapsed = block.classList.toggle('is-collapsed');
+            toggleButton.textContent = collapsed ? 'Show Jobs' : 'Hide Jobs';
+            toggleButton.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+            toggleButton.setAttribute('aria-label', (collapsed ? 'Show ' : 'Hide ') + categoryGroup.label + ' jobs');
+        });
+        heading.appendChild(toggleButton);
         block.appendChild(heading);
 
         categoryGroup.jobs.forEach(function(job) {

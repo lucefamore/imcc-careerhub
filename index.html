@@ -545,21 +545,35 @@ async function restoreSupabaseSession() {
             return setAuthError(adminLoginRequested ? 'adminLogin' : 'login', 'Sign in with your @imcc.edu.ph Google account.');
         }
 
-        const isAdmin = await supabaseIsAdmin(session.user.id);
+        /*
+         * Do not make the user wait for several database requests one after another.
+         * Show the marketplace immediately for normal users, while role/profile/jobs
+         * are loaded in parallel in the background.
+         */
+        const userMetadata = session.user.user_metadata || {};
+        const fallbackProfile = {
+            id: session.user.id,
+            email: session.user.email,
+            fullname: userMetadata.full_name || userMetadata.name || session.user.email.split('@')[0]
+        };
+
+        const [isAdmin, existingProfile] = await Promise.all([
+            supabaseIsAdmin(session.user.id),
+            supabaseGetProfile(session.user.id)
+        ]);
+
         if (adminLoginRequested && !isAdmin) {
             await window.supabaseClient.auth.signOut();
             showAdminLogin();
             return setAuthError('adminLogin', 'This institutional account is not authorized for admin access.');
         }
+
+        // Normal users see Home as soon as authentication is verified.
         if (!isAdmin) goToMarketplaceHome();
-        let profile = await supabaseGetProfile(session.user.id);
+
+        let profile = existingProfile;
         if (!profile) {
-            const userMetadata = session.user.user_metadata || {};
-            profile = await supabaseSaveProfile({
-                id: session.user.id,
-                email: session.user.email,
-                fullname: userMetadata.full_name || userMetadata.name || session.user.email.split('@')[0]
-            });
+            profile = await supabaseSaveProfile(fallbackProfile);
         }
         if (!profile) {
             const userMetadata = session.user.user_metadata || {};
@@ -582,10 +596,16 @@ async function restoreSupabaseSession() {
                 resumeFileName: profile.resume_file_name || ''
             }
         }));
-        getManagedJobs();
-        refreshPublicJobs();
-        await loadPublicJobs();
         updateNavAuthState();
+
+        // These are independent operations; run them together so login is faster.
+        const backgroundLoads = [
+            Promise.resolve().then(function() { getManagedJobs(); }),
+            Promise.resolve().then(function() { refreshPublicJobs(); }),
+            loadPublicJobs()
+        ];
+        await Promise.allSettled(backgroundLoads);
+
         if (isAdmin) {
             showAdminDashboard();
         }

@@ -14,11 +14,20 @@
 
 <nav>
     <div class="logo">IMCC <span>Careers</span></div>
-    <ul class="nav-links">
-        <li><a href="#home">Home</a></li>
-        <li><a href="#jobs">Jobs</a></li>
-        <li><a href="#ai">AI Match</a></li>
-        <li><a href="#dashboard" onclick="openUserDashboard(); return false;">Dashboard</a></li>
+    <button class="nav-toggle" id="navToggle" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="navLinks" onclick="toggleMobileNav()">
+        <span></span><span></span><span></span>
+    </button>
+    <ul class="nav-links" id="navLinks">
+        <li><a href="#home" onclick="closeMobileNav()">Home</a></li>
+        <li><a href="#jobs" onclick="closeMobileNav()">Jobs</a></li>
+        <li><a href="#ai" onclick="closeMobileNav()">AI Match</a></li>
+        <li><a href="#dashboard" onclick="closeMobileNav(); openUserDashboard(); return false;">Dashboard</a></li>
+        <li class="nav-links-mobile-only">
+            <button class="profile-chip" id="profileChipMobile" style="display:none;" onclick="closeMobileNav(); openUserProfile()">
+                <span class="profile-chip-avatar" id="profileChipAvatarMobile">U</span>
+                <span id="profileChipLabelMobile">Profile</span>
+            </button>
+        </li>
     </ul>
     <div class="nav-buttons" id="navButtons">
         <button class="profile-chip" id="profileChip" style="display:none;" onclick="openUserProfile()">
@@ -28,14 +37,15 @@
     </div>
     <div class="rail-footer"><span class="status-dot"></span><span>© 2026 IMCC Careers</span></div>
 </nav>
+<div class="nav-scrim" id="navScrim" onclick="closeMobileNav()"></div>
 
 <section class="hero" id="home">
     <p class="hero-kicker">IMCC Careers | AI-Powered Job Recommendation System</p>
     <h1>Find the right job for your career.</h1>
     <p>Personalized opportunities for IMCC students and alumni, powered by your profile, skills, and goals.</p>
     <div class="search-box">
-        <input type="text" id="jobSearch" placeholder="Search title, company, or skill...">
-        <select id="jobCategory">
+        <input type="text" id="jobSearch" placeholder="Search title, company, or skill..." oninput="handleSearchInput()" onkeydown="if(event.key==='Enter'){event.preventDefault();searchJobs();}">
+        <select id="jobCategory" onchange="searchJobs()">
             <option value="all">All Categories</option>
             <option value="IT">Information Technology</option>
             <option value="Healthcare">Healthcare</option>
@@ -225,6 +235,7 @@
             <input id="jobEditorEmploymentType" type="text" placeholder="Employment type" required>
             <input id="jobEditorTag" type="text" placeholder="Job tag" required>
             <input id="jobEditorUrl" type="url" placeholder="Original job URL" required>
+            <input id="jobEditorSkills" type="text" placeholder="Skills (comma separated, optional)">
             <textarea id="jobEditorDescription" placeholder="Job description" rows="4" required></textarea>
             <select id="jobEditorStatus" required>
                 <option value="published">Published</option>
@@ -458,6 +469,92 @@ async function supabaseGetJobs() {
     }
 }
 
+function slugifyJobTitle(title, company) {
+    const base = String(title || 'job') + '-' + String(company || '');
+    const slug = base.toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 60);
+    return (slug || 'job') + '-' + Date.now().toString(36);
+}
+
+function parseSkillsInput(value) {
+    return String(value || '')
+        .split(',')
+        .map(function(item) { return item.trim(); })
+        .filter(Boolean);
+}
+
+async function supabaseListAdminJobs() {
+    if (!hasSupabaseConfig()) return null;
+    try {
+        const { data, error } = await window.supabaseClient
+            .from('jobs')
+            .select('id,title,company,category,location,employment_type,description,application_url,status,skills')
+            .order('updated_at', { ascending: false });
+        if (error) throw error;
+        return (data || []).map(function(job) {
+            return {
+                id: job.id,
+                title: job.title,
+                company: job.company,
+                category: job.category,
+                location: job.location || '',
+                employmentType: job.employment_type || '',
+                tag: job.category,
+                url: job.application_url || '',
+                description: job.description || '',
+                status: job.status,
+                skills: Array.isArray(job.skills) ? job.skills.join(', ') : ''
+            };
+        });
+    } catch (error) {
+        console.warn('Supabase admin job list failed:', error.message);
+        return null;
+    }
+}
+
+async function supabaseUpsertJob(fields, existingId) {
+    if (!hasSupabaseConfig()) return { ok: false, reason: 'not-configured' };
+    const payload = {
+        title: fields.title,
+        company: fields.company,
+        category: fields.category,
+        location: fields.location,
+        employment_type: fields.employmentType,
+        description: fields.description,
+        application_url: fields.url,
+        status: fields.status,
+        skills: parseSkillsInput(fields.skills)
+    };
+    try {
+        if (existingId) {
+            const { error } = await window.supabaseClient.from('jobs').update(payload).eq('id', existingId);
+            if (error) throw error;
+        } else {
+            payload.slug = slugifyJobTitle(fields.title, fields.company);
+            const { error } = await window.supabaseClient.from('jobs').insert(payload);
+            if (error) throw error;
+        }
+        return { ok: true };
+    } catch (error) {
+        console.warn('Supabase job save failed:', error.message);
+        return { ok: false, reason: error.message };
+    }
+}
+
+async function supabaseDeleteJob(id) {
+    if (!hasSupabaseConfig()) return { ok: false, reason: 'not-configured' };
+    try {
+        const { error } = await window.supabaseClient.from('jobs').delete().eq('id', id);
+        if (error) throw error;
+        return { ok: true };
+    } catch (error) {
+        console.warn('Supabase job delete failed:', error.message);
+        return { ok: false, reason: error.message };
+    }
+}
+
 function isOAuthCallbackPending() {
     const hash = window.location.hash || '';
     const query = window.location.search || '';
@@ -668,21 +765,51 @@ function showAuthView(view) {
 
 function updateNavAuthState() {
     const stored = readLocalJson('imcc_user', null);
-    const profileChip = document.getElementById('profileChip');
-    const profileLabel = document.getElementById('profileChipLabel');
-    const profileAvatar = document.getElementById('profileChipAvatar');
     const isLoggedIn = !!(stored && stored.profile);
+    const chipPairs = [
+        ['profileChip', 'profileChipLabel', 'profileChipAvatar'],
+        ['profileChipMobile', 'profileChipLabelMobile', 'profileChipAvatarMobile']
+    ];
 
-    if (profileChip) profileChip.style.display = isLoggedIn ? 'inline-flex' : 'none';
-
-    if (isLoggedIn) {
-        const fullName = stored.profile.fullname || 'Profile';
-        const firstName = fullName.split(' ')[0] || 'Profile';
-        if (profileLabel) profileLabel.textContent = firstName;
-        if (profileAvatar) {
-            profileAvatar.textContent = firstName.charAt(0).toUpperCase();
+    chipPairs.forEach(function(ids) {
+        const profileChip = document.getElementById(ids[0]);
+        const profileLabel = document.getElementById(ids[1]);
+        const profileAvatar = document.getElementById(ids[2]);
+        if (profileChip) profileChip.style.display = isLoggedIn ? 'inline-flex' : 'none';
+        if (isLoggedIn) {
+            const fullName = stored.profile.fullname || 'Profile';
+            const firstName = fullName.split(' ')[0] || 'Profile';
+            if (profileLabel) profileLabel.textContent = firstName;
+            if (profileAvatar) profileAvatar.textContent = firstName.charAt(0).toUpperCase();
         }
+    });
+}
+
+/* MOBILE NAV */
+
+function toggleMobileNav() {
+    const navLinks = document.getElementById('navLinks');
+    const navToggle = document.getElementById('navToggle');
+    const navScrim = document.getElementById('navScrim');
+    if (!navLinks || !navToggle) return;
+    const isOpen = navLinks.classList.toggle('show');
+    navToggle.classList.toggle('is-active', isOpen);
+    navToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    if (navScrim) navScrim.classList.toggle('show', isOpen);
+    document.body.classList.toggle('nav-open', isOpen);
+}
+
+function closeMobileNav() {
+    const navLinks = document.getElementById('navLinks');
+    const navToggle = document.getElementById('navToggle');
+    const navScrim = document.getElementById('navScrim');
+    if (navLinks) navLinks.classList.remove('show');
+    if (navToggle) {
+        navToggle.classList.remove('is-active');
+        navToggle.setAttribute('aria-expanded', 'false');
     }
+    if (navScrim) navScrim.classList.remove('show');
+    document.body.classList.remove('nav-open');
 }
 
 async function openUserDashboard() {
@@ -797,10 +924,18 @@ function getRenderableJobCategories() {
         }, []);
 
     const merged = groups.map(function(group) {
+        const seen = new Set();
+        const jobs = (Array.isArray(group.jobs) ? group.jobs : []).filter(function(job) {
+            const key = [job.title, job.company, job.url].join('|').toLowerCase();
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        }).map(function(job) { return Object.assign({}, job); });
+
         return {
             category: group.category || 'Other',
             label: group.label || group.category || 'Other',
-            jobs: Array.isArray(group.jobs) ? group.jobs.map(function(job) { return Object.assign({}, job); }) : []
+            jobs: jobs
         };
     });
 
@@ -870,9 +1005,11 @@ async function loadPublicJobs() {
     }
 }
 
-function openJobEditor(jobId) {
-    const jobs = getManagedJobs();
-    const job = jobId ? jobs.find(function(item) { return item.id === jobId; }) : null;
+let lastLoadedAdminJobs = null;
+
+async function openJobEditor(jobId) {
+    const jobs = hasSupabaseConfig() ? (lastLoadedAdminJobs || await supabaseListAdminJobs() || []) : getManagedJobs();
+    const job = jobId ? jobs.find(function(item) { return String(item.id) === String(jobId); }) : null;
     document.getElementById('jobEditorTitle').textContent = job ? 'Edit Job' : 'Add Job';
     document.getElementById('jobEditorId').value = job ? job.id : '';
     document.getElementById('jobEditorTitleInput').value = job ? job.title : '';
@@ -882,6 +1019,7 @@ function openJobEditor(jobId) {
     document.getElementById('jobEditorEmploymentType').value = job ? job.employmentType : 'Full-Time';
     document.getElementById('jobEditorTag').value = job ? job.tag : '';
     document.getElementById('jobEditorUrl').value = job ? job.url : '';
+    document.getElementById('jobEditorSkills').value = job ? (job.skills || '') : '';
     document.getElementById('jobEditorDescription').value = job ? job.description : '';
     document.getElementById('jobEditorStatus').value = job ? job.status : 'published';
     document.getElementById('jobEditorError').textContent = '';
@@ -898,7 +1036,7 @@ function closeJobEditor() {
     modal.setAttribute('aria-hidden', 'true');
 }
 
-function saveJobFromEditor(event) {
+async function saveJobFromEditor(event) {
     event.preventDefault();
     const errorEl = document.getElementById('jobEditorError');
     errorEl.textContent = '';
@@ -910,49 +1048,91 @@ function saveJobFromEditor(event) {
         employmentType: document.getElementById('jobEditorEmploymentType').value.trim(),
         tag: document.getElementById('jobEditorTag').value.trim(),
         url: document.getElementById('jobEditorUrl').value.trim(),
+        skills: document.getElementById('jobEditorSkills').value.trim(),
         description: document.getElementById('jobEditorDescription').value.trim(),
         status: document.getElementById('jobEditorStatus').value
     };
-    if (Object.keys(fields).some(function(key) { return !fields[key]; })) {
+    const requiredFields = ['title', 'company', 'category', 'location', 'employmentType', 'tag', 'url', 'description', 'status'];
+    if (requiredFields.some(function(key) { return !fields[key]; })) {
         errorEl.textContent = 'Please complete all job fields.';
         return;
     }
 
-    const jobs = getManagedJobs();
     const id = document.getElementById('jobEditorId').value;
-    const existingIndex = jobs.findIndex(function(job) { return job.id === id; });
-    const nextJob = Object.assign({ id: id || 'job-' + Date.now() }, fields);
-    if (existingIndex >= 0) jobs[existingIndex] = Object.assign({}, jobs[existingIndex], nextJob);
-    else jobs.push(nextJob);
-    saveManagedJobs(jobs);
+    const submitBtn = event.target.querySelector('.submit-btn');
+    if (submitBtn) submitBtn.disabled = true;
+
+    if (hasSupabaseConfig()) {
+        const result = await supabaseUpsertJob(fields, id || null);
+        if (submitBtn) submitBtn.disabled = false;
+        if (!result.ok) {
+            errorEl.textContent = 'Could not save to the database: ' + (result.reason || 'unknown error');
+            return;
+        }
+    } else {
+        const jobs = getManagedJobs();
+        const existingIndex = jobs.findIndex(function(job) { return job.id === id; });
+        const nextJob = Object.assign({ id: id || 'job-' + Date.now() }, fields);
+        if (existingIndex >= 0) jobs[existingIndex] = Object.assign({}, jobs[existingIndex], nextJob);
+        else jobs.push(nextJob);
+        saveManagedJobs(jobs);
+        if (submitBtn) submitBtn.disabled = false;
+    }
+
     closeJobEditor();
-    refreshPublicJobs();
-    refreshAdminJobList();
+    await refreshAdminJobList();
+    await loadPublicJobs();
 }
 
-function setJobStatus(jobId, status) {
-    const jobs = getManagedJobs();
-    const job = jobs.find(function(item) { return item.id === jobId; });
-    if (!job) return;
-    job.status = status;
-    saveManagedJobs(jobs);
-    refreshPublicJobs();
-    refreshAdminJobList();
+async function setJobStatus(jobId, status) {
+    if (hasSupabaseConfig()) {
+        const job = (lastLoadedAdminJobs || []).find(function(item) { return String(item.id) === String(jobId); });
+        if (!job) return;
+        const result = await supabaseUpsertJob(Object.assign({}, job, { status: status }), jobId);
+        if (!result.ok) {
+            alert('Could not update status: ' + (result.reason || 'unknown error'));
+            return;
+        }
+    } else {
+        const jobs = getManagedJobs();
+        const job = jobs.find(function(item) { return item.id === jobId; });
+        if (!job) return;
+        job.status = status;
+        saveManagedJobs(jobs);
+    }
+    await refreshAdminJobList();
+    await loadPublicJobs();
 }
 
-function removeJob(jobId) {
-    const jobs = getManagedJobs();
-    const job = jobs.find(function(item) { return item.id === jobId; });
+async function removeJob(jobId) {
+    const jobs = hasSupabaseConfig() ? (lastLoadedAdminJobs || []) : getManagedJobs();
+    const job = jobs.find(function(item) { return String(item.id) === String(jobId); });
     if (!job || !confirm('Remove "' + job.title + '" from the job listings?')) return;
-    saveManagedJobs(jobs.filter(function(item) { return item.id !== jobId; }));
-    refreshPublicJobs();
-    refreshAdminJobList();
+
+    if (hasSupabaseConfig()) {
+        const result = await supabaseDeleteJob(jobId);
+        if (!result.ok) {
+            alert('Could not remove this job: ' + (result.reason || 'unknown error'));
+            return;
+        }
+    } else {
+        saveManagedJobs(jobs.filter(function(item) { return item.id !== jobId; }));
+    }
+    await refreshAdminJobList();
+    await loadPublicJobs();
 }
 
-function refreshAdminJobList() {
+async function refreshAdminJobList() {
     const jobList = document.getElementById('adminJobsList');
     if (!jobList) return;
-    const jobs = getManagedJobs();
+    jobList.innerHTML = '<li>Loading jobs…</li>';
+
+    const jobs = hasSupabaseConfig() ? (await supabaseListAdminJobs() || []) : getManagedJobs();
+    lastLoadedAdminJobs = hasSupabaseConfig() ? jobs : null;
+
+    const totalJobsEl = document.getElementById('adminTotalJobs');
+    if (totalJobsEl) totalJobsEl.textContent = jobs.length;
+
     if (!jobs.length) {
         jobList.innerHTML = '<li>No jobs listed.</li>';
         return;
@@ -986,18 +1166,15 @@ async function showAdminDashboard() {
     if (adminDashboard) adminDashboard.style.display = 'block';
     closeAuthModal();
 
-    const managedJobs = getManagedJobs();
-    const jobs = managedJobs.length;
     const users = [];
     const applicants = users.filter(function(user) { return (user.role || 'user') !== 'admin'; }).length;
 
-    document.getElementById('adminTotalJobs').textContent = jobs;
     document.getElementById('adminTotalUsers').textContent = users.length;
     document.getElementById('adminTotalApplicants').textContent = applicants;
 
     let userList = document.getElementById('adminUsersList');
 
-    refreshAdminJobList();
+    await refreshAdminJobList();
 
     if (userList) {
         const list = users.map(function(user) {
@@ -1794,6 +1971,12 @@ function filterJobs(category, event) {
 
 
 /* SEARCH JOB */
+
+let searchDebounceTimer = null;
+function handleSearchInput() {
+    window.clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = window.setTimeout(searchJobs, 200);
+}
 
 function searchJobs() {
 

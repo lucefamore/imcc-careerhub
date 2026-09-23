@@ -1419,7 +1419,26 @@ nav {
 .filter-btn:hover, .filter-btn.active { background: var(--primary); }
 .job-container { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .category-block { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); align-items: start; padding: 18px; border: 1px solid var(--border); border-radius: 16px; background: rgba(255, 253, 250, 0.8); box-shadow: none; }
-.category-heading { grid-column: 1 / -1; margin-bottom: 12px; color: var(--primary-dark); font-size: 16px; }
+.category-block.is-collapsed { grid-template-columns: 1fr; }
+.category-block.is-collapsed .job-card,
+.category-block.is-collapsed .course-link-panel { display: none; }
+.category-heading { grid-column: 1 / -1; margin-bottom: 12px; color: var(--primary-dark); font-size: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.category-toggle {
+    flex-shrink: 0;
+    padding: 8px 18px;
+    border-radius: 999px;
+    border: 1px solid var(--primary);
+    background: var(--white);
+    color: var(--primary-dark);
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+.category-toggle:hover {
+    background: var(--primary);
+    color: var(--white);
+}
 .category-block .course-link-panel { grid-column: 1 / -1; }
 .job-card { min-height: 250px; padding: 17px; border: 1px solid var(--border); border-left: 3px solid var(--primary); border-radius: 12px; background: #fff; box-shadow: 0 8px 18px rgba(82, 26, 58, 0.05); }
 .job-card:hover, .job-card:focus-within { box-shadow: 0 14px 24px rgba(82, 26, 58, 0.1); }

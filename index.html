@@ -1956,9 +1956,15 @@ function filterJobs(category, event) {
             let visibleJobs = block.querySelectorAll('.job-card:not([style*="display: none"])');
             const hasVisibleJobs = visibleJobs.length > 0;
             const matchesSelectedCategory = category === 'all' || block.dataset.categoryGroup === category;
-            if (category !== 'all' && matchesSelectedCategory) {
+            const toggle = block.querySelector('.category-toggle');
+            if (category === 'all') {
+                block.classList.add('is-collapsed');
+                if (toggle) {
+                    toggle.textContent = 'Show Jobs';
+                    toggle.setAttribute('aria-expanded', 'false');
+                }
+            } else if (matchesSelectedCategory) {
                 block.classList.remove('is-collapsed');
-                const toggle = block.querySelector('.category-toggle');
                 if (toggle) {
                     toggle.textContent = 'Hide Jobs';
                     toggle.setAttribute('aria-expanded', 'true');
@@ -2083,12 +2089,18 @@ function searchJobs() {
         function(block) {
             let visibleJobs = block.querySelectorAll('.job-card:not([style*="display: none"])');
             const hasVisibleJobs = visibleJobs.length > 0;
+            const toggle = block.querySelector('.category-toggle');
             if (search || category !== 'all') {
                 if (hasVisibleJobs) block.classList.remove('is-collapsed');
-                const toggle = block.querySelector('.category-toggle');
                 if (toggle && hasVisibleJobs) {
                     toggle.textContent = 'Hide Jobs';
                     toggle.setAttribute('aria-expanded', 'true');
+                }
+            } else {
+                block.classList.add('is-collapsed');
+                if (toggle) {
+                    toggle.textContent = 'Show Jobs';
+                    toggle.setAttribute('aria-expanded', 'false');
                 }
             }
             block.style.display = hasVisibleJobs ? 'grid' : 'none';
@@ -2105,11 +2117,11 @@ function clearSearch() {
     });
     document.querySelectorAll('.category-block').forEach(function(block) {
         block.style.display = 'grid';
-        block.classList.remove('is-collapsed');
+        block.classList.add('is-collapsed');
         const toggle = block.querySelector('.category-toggle');
         if (toggle) {
-            toggle.textContent = 'Hide Jobs';
-            toggle.setAttribute('aria-expanded', 'true');
+            toggle.textContent = 'Show Jobs';
+            toggle.setAttribute('aria-expanded', 'false');
         }
     });
 }

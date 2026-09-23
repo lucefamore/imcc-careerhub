@@ -11,37 +11,9 @@ function normalizeJob(job, fallbackCategory, fallbackLabel) {
     };
 }
 
-function getRenderableJobCategories() {
-    const groups = Array.isArray(window.jobCategories) ? window.jobCategories : [];
-    const merged = {};
-
-    groups.forEach(function(group) {
-        if (!group || !group.category) return;
-        const category = String(group.category);
-        const label = group.label || category;
-        if (!merged[category]) {
-            merged[category] = { category: category, label: label, jobs: [] };
-        }
-
-        const jobs = Array.isArray(group.jobs) ? group.jobs : [];
-        jobs.forEach(function(job) {
-            const normalized = normalizeJob(job, category, label);
-            const key = [normalized.title, normalized.company, normalized.url].join('|').toLowerCase();
-            const existing = merged[category].jobs.some(function(existingJob) {
-                const existingKey = [existingJob.title, existingJob.company, existingJob.url].join('|').toLowerCase();
-                return existingKey === key;
-            });
-
-            if (!existing) {
-                merged[category].jobs.push(normalized);
-            }
-        });
-    });
-
-    return Object.keys(merged).map(function(category) {
-        return merged[category];
-    });
-}
+// NOTE: getRenderableJobCategories() is defined once, in index.html's inline
+// script, so admin/Supabase-loaded jobs and the local seed files share one
+// merge + de-duplication path instead of two silently conflicting copies.
 
 function renderJobs() {
     let container = document.getElementById('jobContainer');

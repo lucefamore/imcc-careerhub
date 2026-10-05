@@ -847,39 +847,6 @@ footer p {
     font-weight: 600;
 }
 
-.verification-step[hidden] {
-    display: none;
-}
-
-.verification-note {
-    margin: 0;
-    color: var(--gray);
-    font-size: 13px;
-    overflow-wrap: anywhere;
-}
-
-.verification-step {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 12px;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    background: #fff8fb;
-}
-
-.verification-step label {
-    font-size: 12px;
-    font-weight: 700;
-    color: var(--primary-dark);
-}
-
-.verification-step input {
-    padding: 12px 13px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-}
-
 .auth-form {
     display: flex;
     flex-direction: column;

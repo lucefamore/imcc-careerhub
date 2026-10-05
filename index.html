@@ -631,9 +631,6 @@ async function restoreSupabaseSession() {
             fullname: userMetadata.full_name || userMetadata.name || session.user.email.split('@')[0]
         };
 
-        // Let regular users enter the marketplace while profile and role data load.
-        if (!adminLoginRequested) goToMarketplaceHome();
-
         const [isAdmin, existingProfile] = await Promise.all([
             supabaseIsAdmin(session.user.id),
             supabaseGetProfile(session.user.id)
@@ -644,6 +641,9 @@ async function restoreSupabaseSession() {
             showAdminLogin();
             return setAuthError('adminLogin', 'This institutional account is not authorized for admin access.');
         }
+
+        // Normal users see Home as soon as authentication is verified.
+        if (!isAdmin) goToMarketplaceHome();
 
         let profile = existingProfile;
         if (!profile) {
@@ -697,6 +697,19 @@ if (window.supabaseClient) {
     window.supabaseClient.auth.onAuthStateChange(function(event) {
         if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
             window.setTimeout(restoreSupabaseSession, 0);
+        } else if (event === 'SIGNED_OUT') {
+            // Covers expiry/revocation, not just the explicit Logout button,
+            // so a lost session always re-locks the home page instead of
+            // leaving stale content visible.
+            localStorage.removeItem('imcc_user');
+            updateNavAuthState();
+            const dashboard = document.getElementById('dashboard');
+            const adminDashboard = document.getElementById('adminDashboard');
+            if (dashboard) dashboard.style.display = 'none';
+            if (adminDashboard) adminDashboard.style.display = 'none';
+            document.body.classList.add('auth-locked');
+            showAuthView('login');
+            openAuthModal();
         }
     });
 }

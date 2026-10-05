@@ -259,6 +259,7 @@
 
         <div class="auth-view active" id="loginView">
             <h3>WELCOME TO IMCC CAREER JOB MARKETPLACE</h3>
+            <p class="auth-note">Use your institutional Google account ending in @imcc.edu.ph.</p>
             <form class="auth-form">
                 <button id="google-login" class="google-signin-btn" type="button" aria-label="Sign in with Google">
                     <span class="google-mark" aria-hidden="true">G</span>
@@ -271,7 +272,7 @@
 
         <div class="auth-view" id="adminLoginView">
             <h3>IMCC-Careers Admin</h3>
-            <p>Use your authorized institutional Google account to manage the marketplace.</p>
+            <p class="auth-note">Use your authorized institutional Google account to manage the marketplace.</p>
             <form class="auth-form">
                 <button id="admin-google-login" class="google-signin-btn" type="button" aria-label="Admin sign in with Google">
                     <span class="google-mark" aria-hidden="true">G</span>
@@ -616,7 +617,10 @@ async function restoreSupabaseSession() {
         if (!session || !session.user || !isInstitutionalEmail(session.user.email)) {
             await window.supabaseClient.auth.signOut();
             if (adminLoginRequested) showAdminLogin();
-            return setAuthError(adminLoginRequested ? 'adminLogin' : 'login', 'Sign in with your @imcc.edu.ph Google account.');
+            return setAuthError(
+                adminLoginRequested ? 'adminLogin' : 'login',
+                getInstitutionalEmailError(session && session.user ? session.user.email : '', adminLoginRequested)
+            );
         }
 
         /*
@@ -631,6 +635,9 @@ async function restoreSupabaseSession() {
             fullname: userMetadata.full_name || userMetadata.name || session.user.email.split('@')[0]
         };
 
+        // Let regular users enter the marketplace while profile and role data load.
+        if (!adminLoginRequested) goToMarketplaceHome();
+
         const [isAdmin, existingProfile] = await Promise.all([
             supabaseIsAdmin(session.user.id),
             supabaseGetProfile(session.user.id)
@@ -641,9 +648,6 @@ async function restoreSupabaseSession() {
             showAdminLogin();
             return setAuthError('adminLogin', 'This institutional account is not authorized for admin access.');
         }
-
-        // Normal users see Home as soon as authentication is verified.
-        if (!isAdmin) goToMarketplaceHome();
 
         let profile = existingProfile;
         if (!profile) {
@@ -697,19 +701,6 @@ if (window.supabaseClient) {
     window.supabaseClient.auth.onAuthStateChange(function(event) {
         if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
             window.setTimeout(restoreSupabaseSession, 0);
-        } else if (event === 'SIGNED_OUT') {
-            // Covers expiry/revocation, not just the explicit Logout button,
-            // so a lost session always re-locks the home page instead of
-            // leaving stale content visible.
-            localStorage.removeItem('imcc_user');
-            updateNavAuthState();
-            const dashboard = document.getElementById('dashboard');
-            const adminDashboard = document.getElementById('adminDashboard');
-            if (dashboard) dashboard.style.display = 'none';
-            if (adminDashboard) adminDashboard.style.display = 'none';
-            document.body.classList.add('auth-locked');
-            showAuthView('login');
-            openAuthModal();
         }
     });
 }
@@ -1265,6 +1256,18 @@ function clearAuthErrors(formType) {
 
 function isInstitutionalEmail(email) {
     return /^[^@\s]+@imcc\.edu\.ph$/i.test(String(email || '').trim());
+}
+
+function getInstitutionalEmailError(email, isAdminAttempt) {
+    const trimmed = String(email || '').trim();
+    if (!trimmed) {
+        return isAdminAttempt
+            ? 'Admin access requires an @imcc.edu.ph institutional Google account.'
+            : 'Please sign in with your @imcc.edu.ph institutional Google account.';
+    }
+    return isAdminAttempt
+        ? 'This account is not authorized for admin access. Please use an @imcc.edu.ph institutional Google account.'
+        : 'Only @imcc.edu.ph institutional Google accounts can access IMCC Careers.';
 }
 
 async function handleLoginSubmit(event) {

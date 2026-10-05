@@ -561,40 +561,21 @@ function isOAuthCallbackPending() {
     return hash.includes('access_token=') || hash.includes('error_description=') || query.includes('code=');
 }
 
-async function restoreImplicitOAuthSession() {
-    const hash = window.location.hash || '';
-    if (!hash.includes('access_token=')) return null;
-
-    const params = new URLSearchParams(hash.substring(1));
-    const accessToken = params.get('access_token');
-    const refreshToken = params.get('refresh_token');
-    if (!accessToken || !refreshToken) return null;
-
-    const { data, error } = await window.supabaseClient.auth.setSession({
-        access_token: accessToken,
-        refresh_token: refreshToken
-    });
-    if (error) throw error;
-    window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
-    return data.session;
-}
-
-async function restorePkceOAuthSession() {
-    const code = new URLSearchParams(window.location.search).get('code');
-    if (!code) return null;
-
-    const { data, error } = await window.supabaseClient.auth.exchangeCodeForSession(code);
-    if (error) throw error;
-    window.history.replaceState({}, document.title, window.location.pathname);
-    return data.session;
-}
-
+/*
+ * The Supabase client is created with detectSessionInUrl: true (see below), so it
+ * already exchanges the Google OAuth code/token in the URL for a session on its own,
+ * as soon as the page loads back from the Google redirect. We must NOT also call
+ * exchangeCodeForSession()/setSession() ourselves here — the code is single-use, so a
+ * second manual exchange would fail and force a slow multi-second retry loop, which is
+ * exactly what was making Google sign-in feel slow. We simply wait briefly for the
+ * session that supabase-js is already producing.
+ */
 async function waitForOAuthSession() {
-    for (let attempt = 0; attempt < 20; attempt += 1) {
+    for (let attempt = 0; attempt < 16; attempt += 1) {
         const result = await window.supabaseClient.auth.getSession();
         if (result.error) throw result.error;
         if (result.data && result.data.session) return result.data.session;
-        await new Promise(function(resolve) { window.setTimeout(resolve, 250); });
+        await new Promise(function(resolve) { window.setTimeout(resolve, 100); });
     }
     return null;
 }
@@ -625,11 +606,7 @@ async function restoreSupabaseSession() {
 
     try {
         let session;
-        const callbackSession = await restorePkceOAuthSession();
-        const implicitSession = callbackSession || await restoreImplicitOAuthSession();
-        if (implicitSession) {
-            session = implicitSession;
-        } else if (isOAuthCallbackPending()) {
+        if (isOAuthCallbackPending()) {
             session = await waitForOAuthSession();
         } else {
             const { data, error } = await window.supabaseClient.auth.getSession();
@@ -654,6 +631,9 @@ async function restoreSupabaseSession() {
             fullname: userMetadata.full_name || userMetadata.name || session.user.email.split('@')[0]
         };
 
+        // Let regular users enter the marketplace while profile and role data load.
+        if (!adminLoginRequested) goToMarketplaceHome();
+
         const [isAdmin, existingProfile] = await Promise.all([
             supabaseIsAdmin(session.user.id),
             supabaseGetProfile(session.user.id)
@@ -664,9 +644,6 @@ async function restoreSupabaseSession() {
             showAdminLogin();
             return setAuthError('adminLogin', 'This institutional account is not authorized for admin access.');
         }
-
-        // Normal users see Home as soon as authentication is verified.
-        if (!isAdmin) goToMarketplaceHome();
 
         let profile = existingProfile;
         if (!profile) {
@@ -1243,7 +1220,14 @@ window.addEventListener('DOMContentLoaded', function() {
         localStorage.setItem('imcc_user', JSON.stringify(storedUser));
     }
     updateNavAuthState();
-    restoreSupabaseSession();
+    // Supabase's onAuthStateChange listener (registered above) fires an
+    // INITIAL_SESSION event on its own as soon as the client is ready, which
+    // drives restoreSupabaseSession() for the normal case. We only need to
+    // call it directly here if Supabase isn't configured at all, so the
+    // "account service is not configured" message still shows up.
+    if (!window.supabaseClient) {
+        restoreSupabaseSession();
+    }
 });
 
 
@@ -1277,7 +1261,7 @@ async function handleLoginSubmit(event) {
     return signInWithGoogle();
 }
 
-async function signInWithGoogle() {
+async function signInWithGoogle(triggerButton) {
     clearAuthErrors('login');
     if (!hasSupabaseConfig() || !window.supabaseClient) {
         return setAuthError('login', 'Account service is not configured. Please contact support.');
@@ -1289,12 +1273,18 @@ async function signInWithGoogle() {
 
     const redirectTo = window.location.origin + window.location.pathname;
 
+    if (triggerButton) {
+        triggerButton.disabled = true;
+        triggerButton.dataset.originalLabel = triggerButton.innerHTML;
+        triggerButton.innerHTML = '<span class="google-mark" aria-hidden="true">G</span><span>Redirecting to Google…</span>';
+    }
+
     try {
         const { error } = await window.supabaseClient.auth.signInWithOAuth({
             provider: 'google',
             options: {
                 redirectTo: redirectTo,
-                queryParams: { hd: 'imcc.edu.ph', prompt: 'select_account' }
+                queryParams: { hd: 'imcc.edu.ph' }
             }
         });
         if (error) throw error;
@@ -1304,6 +1294,10 @@ async function signInWithGoogle() {
             ? 'Google SSO is not enabled in Supabase. Please enable the Google provider, then try again.'
             : 'Institutional sign-in is temporarily unavailable. Please try again.';
         setAuthError(sessionStorage.getItem('imcc_admin_login_requested') === '1' ? 'adminLogin' : 'login', message);
+        if (triggerButton) {
+            triggerButton.disabled = false;
+            if (triggerButton.dataset.originalLabel) triggerButton.innerHTML = triggerButton.dataset.originalLabel;
+        }
     }
 }
 
@@ -1313,13 +1307,13 @@ document.addEventListener('DOMContentLoaded', function() {
     if (googleLoginButton) {
         googleLoginButton.addEventListener('click', function() {
             sessionStorage.removeItem('imcc_admin_login_requested');
-            signInWithGoogle();
+            signInWithGoogle(googleLoginButton);
         });
     }
     if (adminGoogleLoginButton) {
         adminGoogleLoginButton.addEventListener('click', function() {
             sessionStorage.setItem('imcc_admin_login_requested', '1');
-            signInWithGoogle();
+            signInWithGoogle(adminGoogleLoginButton);
         });
     }
 });

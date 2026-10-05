@@ -265,6 +265,12 @@
                     <span class="google-mark" aria-hidden="true">G</span>
                     <span>Continue with Google</span>
                 </button>
+                <div class="verification-step" id="continueCodeStep" hidden>
+                    <label for="continueCodeInput">Verification code</label>
+                    <p class="verification-note" id="continueCodeNote"></p>
+                    <input id="continueCodeInput" type="text" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" placeholder="6-digit code" autocomplete="one-time-code">
+                    <button id="continueVerifiedLogin" class="submit-btn" type="button">Continue</button>
+                </div>
                 <p class="form-error" id="loginError"></p>
                 <button class="auth-admin-link" type="button" onclick="showAdminLogin()">Admin sign in</button>
             </form>
@@ -278,6 +284,12 @@
                     <span class="google-mark" aria-hidden="true">G</span>
                     <span>Continue as Admin</span>
                 </button>
+                <div class="verification-step" id="adminContinueCodeStep" hidden>
+                    <label for="adminContinueCodeInput">Verification code</label>
+                    <p class="verification-note" id="adminContinueCodeNote"></p>
+                    <input id="adminContinueCodeInput" type="text" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" placeholder="6-digit code" autocomplete="one-time-code">
+                    <button id="adminContinueVerifiedLogin" class="submit-btn" type="button">Continue</button>
+                </div>
                 <p class="form-error" id="adminLoginError"></p>
                 <button class="auth-admin-link" type="button" onclick="showLogin()">Back to user sign in</button>
             </form>
@@ -599,7 +611,6 @@ async function restoreSupabaseSession() {
     document.body.classList.add('auth-locked');
     openAuthModal();
     const adminLoginRequested = sessionStorage.getItem('imcc_admin_login_requested') === '1';
-    sessionStorage.removeItem('imcc_admin_login_requested');
     if (!hasSupabaseConfig()) {
         sessionRestoreInProgress = false;
         return setAuthError('login', 'Account service is not configured. Please contact support.');
@@ -622,6 +633,38 @@ async function restoreSupabaseSession() {
                 getInstitutionalEmailError(session && session.user ? session.user.email : '', adminLoginRequested)
             );
         }
+
+        const allowKey = adminLoginRequested ? 'imcc_admin_continue_allowed' : 'imcc_continue_allowed';
+        const isContinueApproved = sessionStorage.getItem(allowKey) === '1';
+        const isOAuthLoginPending = sessionStorage.getItem('imcc_oauth_login_pending') === '1';
+        const isEmailOtpPending = sessionStorage.getItem('imcc_email_otp_pending') === '1';
+
+        if (isOAuthLoginPending && !isContinueApproved) {
+            const formType = adminLoginRequested ? 'admin' : 'login';
+            if (isEmailOtpPending) {
+                setContinueCodeState(true, formType, session.user.email);
+                return;
+            }
+
+            sessionStorage.setItem('imcc_email_otp_pending', '1');
+            const { error } = await window.supabaseClient.auth.signInWithOtp({
+                email: session.user.email,
+                options: { shouldCreateUser: false }
+            });
+            if (error) {
+                sessionStorage.removeItem('imcc_email_otp_pending');
+                setAuthError(adminLoginRequested ? 'adminLogin' : 'login', 'Could not send a verification code. Please try again.');
+                return;
+            }
+            setContinueCodeState(true, formType, session.user.email);
+            setAuthError(adminLoginRequested ? 'adminLogin' : 'login', '');
+            return;
+        }
+
+        sessionStorage.removeItem(allowKey);
+        sessionStorage.removeItem('imcc_oauth_login_pending');
+        sessionStorage.removeItem('imcc_email_otp_pending');
+        sessionStorage.removeItem('imcc_admin_login_requested');
 
         /*
          * Do not make the user wait for several database requests one after another.
@@ -1254,6 +1297,50 @@ function clearAuthErrors(formType) {
     setAuthError(formType, '');
 }
 
+function setContinueCodeState(show, formType, email) {
+    const step = document.getElementById(formType === 'admin' ? 'adminContinueCodeStep' : 'continueCodeStep');
+    if (!step) return;
+    step.hidden = !show;
+    if (show) {
+        const input = document.getElementById(formType === 'admin' ? 'adminContinueCodeInput' : 'continueCodeInput');
+        const note = document.getElementById(formType === 'admin' ? 'adminContinueCodeNote' : 'continueCodeNote');
+        if (input) input.value = '';
+        if (note) note.textContent = 'Enter the 6-digit code sent to ' + email + '.';
+    }
+}
+
+async function verifyContinueCode(formType) {
+    const fieldId = formType === 'admin' ? 'adminContinueCodeInput' : 'continueCodeInput';
+    const codeField = document.getElementById(fieldId);
+    const value = String(codeField ? codeField.value : '').trim();
+    const errorType = formType === 'admin' ? 'adminLogin' : 'login';
+    if (!/^\d{6}$/.test(value)) {
+        setAuthError(errorType, 'Enter the 6-digit code from your email.');
+        return false;
+    }
+
+    const { data, error: sessionError } = await window.supabaseClient.auth.getSession();
+    const email = data && data.session && data.session.user ? data.session.user.email : '';
+    if (sessionError || !email) {
+        setAuthError(errorType, 'Your Google sign-in expired. Please sign in again.');
+        return false;
+    }
+
+    const { data: verifiedData, error } = await window.supabaseClient.auth.verifyOtp({
+        email: email,
+        token: value,
+        type: 'email'
+    });
+    if (error || !verifiedData || !verifiedData.user || verifiedData.user.email.toLowerCase() !== email.toLowerCase()) {
+        setAuthError(errorType, 'That code is incorrect or expired. Check your email and try again.');
+        if (codeField) codeField.classList.add('field-error');
+        return false;
+    }
+
+    if (codeField) codeField.classList.remove('field-error');
+    return true;
+}
+
 function isInstitutionalEmail(email) {
     return /^[^@\s]+@imcc\.edu\.ph$/i.test(String(email || '').trim());
 }
@@ -1300,7 +1387,7 @@ async function signInWithGoogle(triggerButton) {
             provider: 'google',
             options: {
                 redirectTo: redirectTo,
-                queryParams: { hd: 'imcc.edu.ph' }
+                queryParams: { hd: 'imcc.edu.ph', prompt: 'select_account' }
             }
         });
         if (error) throw error;
@@ -1310,6 +1397,7 @@ async function signInWithGoogle(triggerButton) {
             ? 'Google SSO is not enabled in Supabase. Please enable the Google provider, then try again.'
             : 'Institutional sign-in is temporarily unavailable. Please try again.';
         setAuthError(sessionStorage.getItem('imcc_admin_login_requested') === '1' ? 'adminLogin' : 'login', message);
+        sessionStorage.removeItem('imcc_oauth_login_pending');
         if (triggerButton) {
             triggerButton.disabled = false;
             if (triggerButton.dataset.originalLabel) triggerButton.innerHTML = triggerButton.dataset.originalLabel;
@@ -1320,16 +1408,49 @@ async function signInWithGoogle(triggerButton) {
 document.addEventListener('DOMContentLoaded', function() {
     const googleLoginButton = document.getElementById('google-login');
     const adminGoogleLoginButton = document.getElementById('admin-google-login');
+    const continueLoginButton = document.getElementById('continueVerifiedLogin');
+    const adminContinueLoginButton = document.getElementById('adminContinueVerifiedLogin');
+
     if (googleLoginButton) {
         googleLoginButton.addEventListener('click', function() {
             sessionStorage.removeItem('imcc_admin_login_requested');
+            sessionStorage.setItem('imcc_oauth_login_pending', '1');
+            sessionStorage.removeItem('imcc_continue_allowed');
+            sessionStorage.removeItem('imcc_admin_continue_allowed');
+            sessionStorage.removeItem('imcc_email_otp_pending');
+            setContinueCodeState(false, 'login');
             signInWithGoogle(googleLoginButton);
         });
     }
     if (adminGoogleLoginButton) {
         adminGoogleLoginButton.addEventListener('click', function() {
             sessionStorage.setItem('imcc_admin_login_requested', '1');
+            sessionStorage.setItem('imcc_oauth_login_pending', '1');
+            sessionStorage.removeItem('imcc_continue_allowed');
+            sessionStorage.removeItem('imcc_admin_continue_allowed');
+            sessionStorage.removeItem('imcc_email_otp_pending');
+            setContinueCodeState(false, 'admin');
             signInWithGoogle(adminGoogleLoginButton);
+        });
+    }
+    if (continueLoginButton) {
+        continueLoginButton.addEventListener('click', async function() {
+            if (!await verifyContinueCode('login')) return;
+            sessionStorage.setItem('imcc_continue_allowed', '1');
+            sessionStorage.removeItem('imcc_oauth_login_pending');
+            sessionStorage.removeItem('imcc_email_otp_pending');
+            setContinueCodeState(false, 'login');
+            restoreSupabaseSession();
+        });
+    }
+    if (adminContinueLoginButton) {
+        adminContinueLoginButton.addEventListener('click', async function() {
+            if (!await verifyContinueCode('admin')) return;
+            sessionStorage.setItem('imcc_admin_continue_allowed', '1');
+            sessionStorage.removeItem('imcc_oauth_login_pending');
+            sessionStorage.removeItem('imcc_email_otp_pending');
+            setContinueCodeState(false, 'admin');
+            restoreSupabaseSession();
         });
     }
 });

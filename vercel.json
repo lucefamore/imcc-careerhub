@@ -3,6 +3,11 @@
   "cleanUrls": true,
   "buildCommand": "npm run build",
   "outputDirectory": "public",
+  "functions": {
+    "api/career-agent.js": {
+      "maxDuration": 60
+    }
+  },
   "headers": [
     {
       "source": "/(.*)",

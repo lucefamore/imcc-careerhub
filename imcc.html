@@ -2308,8 +2308,16 @@ function askCareerAI() {
         })
     });
     }).then(async function(response) {
-        const data = await response.json().catch(function() { return {}; });
-        if (!response.ok) throw new Error(data.error || 'Career AI is temporarily unavailable.');
+        let data;
+        try {
+            data = await response.json();
+        } catch (error) {
+            const message = response.status === 404
+                ? 'Career AI is not deployed on this Vercel project. Redeploy with the api/career-agent.js function included.'
+                : 'Career AI returned an invalid response (HTTP ' + response.status + '). Please try again shortly.';
+            throw new Error(message);
+        }
+        if (!response.ok) throw new Error(data.error || 'Career AI is temporarily unavailable (HTTP ' + response.status + ').');
 
         result.replaceChildren();
         const answer = document.createElement('p');

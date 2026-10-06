@@ -3,6 +3,17 @@ function cleanText(value, maxLength) {
     return value.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, maxLength);
 }
 
+function fetchWithTimeout(url, options, timeoutMs) {
+    const controller = new AbortController();
+    const timeout = setTimeout(function() {
+        controller.abort();
+    }, timeoutMs);
+    return fetch(url, Object.assign({}, options, { signal: controller.signal }))
+        .finally(function() {
+            clearTimeout(timeout);
+        });
+}
+
 async function getAuthenticatedUser(req) {
     const authorization = req.headers.authorization || '';
     const tokenMatch = /^Bearer\s+([^\s]+)$/i.exec(authorization);
@@ -13,12 +24,12 @@ async function getAuthenticatedUser(req) {
         throw new Error('SUPABASE_URL and SUPABASE_ANON_KEY are required.');
     }
 
-    const response = await fetch(new URL('/auth/v1/user', supabaseUrl), {
+    const response = await fetchWithTimeout(new URL('/auth/v1/user', supabaseUrl), {
         headers: {
             'apikey': supabaseAnonKey,
             'Authorization': 'Bearer ' + tokenMatch[1]
         }
-    });
+    }, 8000);
     if (!response.ok) return null;
 
     const user = await response.json();
@@ -33,7 +44,7 @@ async function consumeRateLimit(req) {
     const supabaseUrl = process.env.SUPABASE_URL;
     const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
     const token = /^Bearer\s+([^\s]+)$/i.exec(req.headers.authorization || '')[1];
-    const response = await fetch(new URL('/rest/v1/rpc/consume_career_agent_rate_limit', supabaseUrl), {
+    const response = await fetchWithTimeout(new URL('/rest/v1/rpc/consume_career_agent_rate_limit', supabaseUrl), {
         method: 'POST',
         headers: {
             'apikey': supabaseAnonKey,
@@ -41,7 +52,7 @@ async function consumeRateLimit(req) {
             'Content-Type': 'application/json'
         },
         body: '{}'
-    });
+    }, 8000);
     if (!response.ok) {
         console.warn('Career AI rate limit check returned status:', response.status);
         throw new Error('Rate limit check failed.');
@@ -122,7 +133,7 @@ module.exports = async function careerAgent(req, res) {
     });
 
     try {
-        const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+        const aiResponse = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
                 'Authorization': 'Bearer ' + apiKey,
@@ -144,7 +155,7 @@ module.exports = async function careerAgent(req, res) {
                     }
                 ]
             })
-        });
+        }, 40000);
 
         if (!aiResponse.ok) {
             console.warn('Career AI provider returned status:', aiResponse.status);

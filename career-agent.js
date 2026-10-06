@@ -204,13 +204,41 @@ async function handleCareerAgent(request) {
     }
 }
 
-export default {
-    async fetch(request) {
-        try {
-            return await handleCareerAgent(request);
-        } catch (error) {
-            console.error('Career AI handler failed:', error.message);
-            return jsonResponse(500, { error: 'Career AI encountered an internal error. Please try again.' });
-        }
-    }
-};
+module.exports = async function careerAgent(req, res) {
+    try {
+        const headers = new Headers();
+        Object.entries(req.headers).forEach(function(entry) {
+            const value = entry[1];
+            if (Array.isArray(value)) {
+                value.forEach(function(item) { headers.append(entry[0], item); });
+            } else if (value !== undefined) {
+                headers.set(entry[0], value);
+            }
+        });
+
+        const requestBody = req.method === 'GET' || req.method === 'HEAD'
+            ? undefined
+            : typeof req.body === 'string'
+                ? req.body
+                : JSON.stringify(req.body === undefined ? {} : req.body);
+        const request = new Request(new URL(req.url || '/', 'https://' + (req.headers.host || 'localhost')), {
+            method: req.method,
+            headers: headers,
+            body: requestBody
+        });
+        const response = await handleCareerAgent(request);
+        response.headers.forEach(function(value, name) {
+            res.setHeader(name, value);
+        });
+        res.statusCode = response.status;
+        res.end(await response.text());
+    } catch (error) {
+        console.error('Career AI handler failed:', error.message);
+        const response = jsonResponse(500, { error: 'Career AI encountered an internal error. Please try again.' });
+        response.headers.forEach(function(value, name) {
+            res.setHeader(name, value);
+        });
+        res.statusCode = 500;
+        res.end(await response.text());
+    };
+}

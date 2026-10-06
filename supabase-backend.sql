@@ -60,6 +60,7 @@ alter table public.profiles
   add column if not exists experience_summary text,
   add column if not exists photo_data_url text,
   add column if not exists resume_data_url text,
+  add column if not exists resume_path text,
   add column if not exists resume_file_name text,
   add column if not exists created_at timestamptz not null default now(),
   add column if not exists updated_at timestamptz not null default now();
@@ -951,5 +952,49 @@ comment on table public.application_events is
   'Database-written application status audit trail.';
 comment on function public.set_app_role(uuid, public.app_role) is
   'Server-only role management. Do not grant this function to browser roles.';
+
+create table if not exists public.career_agent_rate_limits (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  window_started_at timestamptz not null,
+  request_count integer not null check (request_count >= 0)
+);
+
+alter table public.career_agent_rate_limits enable row level security;
+revoke all on table public.career_agent_rate_limits from public, anon, authenticated;
+
+create or replace function public.consume_career_agent_rate_limit()
+returns boolean
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  current_count integer;
+begin
+  if auth.uid() is null then
+    return false;
+  end if;
+
+  insert into public.career_agent_rate_limits (user_id, window_started_at, request_count)
+  values (auth.uid(), pg_catalog.now(), 1)
+  on conflict (user_id) do update
+    set window_started_at = case
+          when excluded.window_started_at - public.career_agent_rate_limits.window_started_at >= interval '1 minute'
+            then excluded.window_started_at
+          else public.career_agent_rate_limits.window_started_at
+        end,
+        request_count = case
+          when excluded.window_started_at - public.career_agent_rate_limits.window_started_at >= interval '1 minute'
+            then 1
+          else public.career_agent_rate_limits.request_count + 1
+        end
+  returning request_count into current_count;
+
+  return current_count <= 12;
+end;
+$$;
+
+revoke all on function public.consume_career_agent_rate_limit() from public, anon;
+grant execute on function public.consume_career_agent_rate_limit() to authenticated;
 
 commit;

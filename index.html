@@ -117,12 +117,12 @@
                 </div>
             </div>
             <div class="career-ai-input-row">
-                <input id="aiPrompt" type="text" placeholder="What jobs fit my skills?" aria-label="Ask IMCC Career AI">
-                <button class="search-btn" type="button" onclick="askCareerAI()">Send</button>
+                <input id="aiPrompt" type="text" placeholder="What jobs fit my skills?" aria-label="Ask IMCC Career AI" onkeydown="if(event.key==='Enter'){event.preventDefault();askCareerAI();}">
+                <button class="search-btn" id="careerAiSendButton" type="button" onclick="askCareerAI()">Send</button>
                 <button class="ai-clear-btn" type="button" onclick="clearRecommendation()">Clear</button>
             </div>
             <p class="career-ai-hint">Try: “I know HTML and Python” or “I want a healthcare job.”</p>
-            <div id="recommendation-result"></div>
+            <div id="recommendation-result" role="status" aria-live="polite"></div>
         </div>
 
         <div class="ai-content">
@@ -350,7 +350,7 @@
     <script src="jobs-socialwork.js"></script>
     <script src="jobs-chtm.js"></script>
     <script src="jobs-renderer.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js" integrity="sha256-WdOUh8NYmEO0EDItij1WLOAiq6HlzLFomO8/sqDaLs0=" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script src="supabase-config.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" integrity="sha512-qZvrmS2ekKPF2mSznTQsxqPgnpkI4DNTlrdUmTzrDgektczlKNRRhy5X5AAOnx5S09ydFYWWNSfcEqDTTHgtNA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script>
@@ -1912,7 +1912,8 @@ function downloadUploadedResume() {
 
 function applyJob(jobTitle, url) {
     if (url) {
-        window.open(url, '_blank');
+        const safeUrl = safeExternalUrl(url);
+        if (safeUrl !== '#') window.open(safeUrl, '_blank', 'noopener,noreferrer');
         return;
     }
 
@@ -2172,11 +2173,22 @@ function renderRecommendedJobs(course, skills) {
             '<h3>' + escapeHtml(title) + '</h3>' +
             '<p class="company">' + escapeHtml(company) + '</p>' +
             '<p class="job-info">' + escapeHtml(info) + '</p>' +
-            '<div class="recommended-actions"><button type="button" class="apply-btn" onclick="scrollToRecommendedJob(event, \'' + title.replace(/'/g, "\\'") + '\')">View Job</button>' +
-            '<button type="button" class="why-match-btn" onclick="showMatchReason(event, this, \'' + why.replace(/'/g, "\\'") + '\')">Why this matches?</button></div>' +
+            '<div class="recommended-actions"><button type="button" class="apply-btn recommended-view-job" data-job-title="' + escapeHtml(title) + '">View Job</button>' +
+            '<button type="button" class="why-match-btn recommended-why-match" data-match-reason="' + escapeHtml(why) + '">Why this matches?</button></div>' +
             '<p class="match-reason" hidden></p>' +
             '</article>';
     }).join('');
+
+    container.querySelectorAll('.recommended-view-job').forEach(function(button) {
+        button.addEventListener('click', function(event) {
+            scrollToRecommendedJob(event, button.dataset.jobTitle);
+        });
+    });
+    container.querySelectorAll('.recommended-why-match').forEach(function(button) {
+        button.addEventListener('click', function(event) {
+            showMatchReason(event, button, button.dataset.matchReason);
+        });
+    });
 }
 
 function showMatchReason(event, button, reason) {
@@ -2189,16 +2201,120 @@ function showMatchReason(event, button, reason) {
 function askCareerAI() {
     const prompt = document.getElementById('aiPrompt');
     const text = prompt ? prompt.value.trim() : '';
+    const result = document.getElementById('recommendation-result');
+    const sendButton = document.getElementById('careerAiSendButton');
     if (!text) {
         if (prompt) prompt.focus();
         return;
     }
-    const course = document.getElementById('userCourse');
-    const skills = document.getElementById('userSkills');
-    if (course) course.value = text;
-    if (skills) skills.value = text;
-    recommendJob();
-    document.getElementById('ai').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    const jobs = (Array.isArray(window.jobCategories) ? window.jobCategories : []).flatMap(function(group) {
+        return (Array.isArray(group.jobs) ? group.jobs : []).map(function(job) {
+            return {
+                title: job.title || '',
+                company: job.company || '',
+                category: group.label || group.category || job.tag || '',
+                location: job.location || '',
+                employmentType: job.employmentType || job.employment_type || '',
+                description: job.description || '',
+                url: job.url || ''
+            };
+        });
+    }).filter(function(job) {
+        return job.title && job.company;
+    }).slice(0, 30);
+
+    result.classList.remove('recommendation-warning');
+    result.style.display = 'block';
+    result.textContent = 'Thinking through your question...';
+    if (sendButton) {
+        sendButton.disabled = true;
+        sendButton.textContent = 'Thinking...';
+    }
+
+    window.supabaseClient.auth.getSession().then(function(result) {
+        if (result.error) throw result.error;
+        if (!result.data.session) throw new Error('Sign in with your institutional account to use Career AI.');
+        return fetch('/api/career-agent', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + result.data.session.access_token
+        },
+        body: JSON.stringify({
+            prompt: text,
+            jobs: jobs.map(function(job) {
+                return {
+                    title: job.title,
+                    company: job.company,
+                    category: job.category,
+                    location: job.location,
+                    employmentType: job.employmentType,
+                    description: job.description
+                };
+            })
+        })
+    });
+    }).then(async function(response) {
+        const data = await response.json().catch(function() { return {}; });
+        if (!response.ok) throw new Error(data.error || 'Career AI is temporarily unavailable.');
+
+        result.replaceChildren();
+        const answer = document.createElement('p');
+        answer.className = 'career-ai-answer';
+        answer.textContent = data.answer || 'I could not form an answer. Please try asking another way.';
+        result.appendChild(answer);
+
+        const matches = Array.isArray(data.recommendations) ? data.recommendations : [];
+        const matchItems = matches.filter(function(match) {
+            return Number.isInteger(match.jobIndex) && jobs[match.jobIndex];
+        }).slice(0, 3);
+        if (matchItems.length) {
+            const heading = document.createElement('h4');
+            heading.className = 'career-ai-matches-title';
+            heading.textContent = 'Openings to explore';
+            result.appendChild(heading);
+
+            const list = document.createElement('ul');
+            list.className = 'career-ai-matches';
+            matchItems.forEach(function(match) {
+                const job = jobs[match.jobIndex];
+                const item = document.createElement('li');
+                const title = document.createElement('strong');
+                title.textContent = job.title + ' at ' + job.company;
+                item.appendChild(title);
+                const reason = document.createElement('p');
+                reason.textContent = match.whyFit || '';
+                item.appendChild(reason);
+                const skills = Array.isArray(match.skillsToBuild) ? match.skillsToBuild.filter(Boolean).slice(0, 4) : [];
+                if (skills.length) {
+                    const skillsLine = document.createElement('p');
+                    skillsLine.textContent = 'Skills to build: ' + skills.join(', ');
+                    item.appendChild(skillsLine);
+                }
+                if (job.url && safeExternalUrl(job.url) !== '#') {
+                    const link = document.createElement('a');
+                    link.href = safeExternalUrl(job.url);
+                    link.target = '_blank';
+                    link.rel = 'noopener noreferrer';
+                    link.textContent = 'View application';
+                    item.appendChild(link);
+                }
+                list.appendChild(item);
+            });
+            result.appendChild(list);
+        }
+        document.getElementById('ai').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }).catch(function(error) {
+        result.replaceChildren();
+        result.classList.add('recommendation-warning');
+        result.textContent = error.message || 'Career AI could not connect. Please try again.';
+    }).finally(function() {
+        if (sendButton) {
+            sendButton.disabled = false;
+            sendButton.textContent = 'Send';
+        }
+    });
 }
 
 function scrollToFirstVisibleJob(event) {
@@ -2225,17 +2341,9 @@ function scrollToRecommendedJob(event, title) {
 function clearRecommendation() {
     const prompt = document.getElementById('aiPrompt');
     if (prompt) prompt.value = '';
-    const courseInput = document.getElementById('userCourse');
-    const skillsInput = document.getElementById('userSkills');
-    const experienceInput = document.getElementById('userExperienceType');
-    const yearsInput = document.getElementById('userYearsExperience');
-    if (courseInput) courseInput.value = '';
-    if (skillsInput) skillsInput.value = '';
-    if (experienceInput) experienceInput.value = 'Fresh Graduate';
-    if (yearsInput) yearsInput.value = '';
     const result = document.getElementById('recommendation-result');
     result.style.display = 'none';
-    result.innerHTML = '';
+    result.replaceChildren();
     result.classList.remove('recommendation-warning');
 }
 

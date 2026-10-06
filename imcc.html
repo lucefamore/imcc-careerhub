@@ -2314,7 +2314,9 @@ function askCareerAI() {
         } catch (error) {
             const message = response.status === 404
                 ? 'Career AI is not deployed on this Vercel project. Redeploy with the api/career-agent.js function included.'
-                : 'Career AI returned an invalid response (HTTP ' + response.status + '). Please try again shortly.';
+                : response.status === 494
+                    ? 'Vercel could not start the Career AI function. Redeploy the latest code and check the Function Runtime Logs if this continues.'
+                    : 'Career AI returned an invalid response (HTTP ' + response.status + '). Please try again shortly.';
             throw new Error(message);
         }
         if (!response.ok) throw new Error(data.error || 'Career AI is temporarily unavailable (HTTP ' + response.status + ').');

@@ -4,7 +4,7 @@
   "private": true,
   "description": "IMCC Careers Job Marketplace",
   "scripts": {
-    "build": "node build.cjs",
+    "build": "node build.js",
     "dev": "npx serve .",
     "start": "npx serve ."
   }

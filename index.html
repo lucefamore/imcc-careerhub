@@ -350,7 +350,7 @@
     <script src="jobs-socialwork.js"></script>
     <script src="jobs-chtm.js"></script>
     <script src="jobs-renderer.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js" integrity="sha256-WdOUh8NYmEO0EDItij1WLOAiq6HlzLFomO8/sqDaLs0=" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" integrity="sha512-qZvrmS2ekKPF2mSznTQsxqPgnpkI4DNTlrdUmTzrDgektczlKNRRhy5X5AAOnx5S09ydFYWWNSfcEqDTTHgtNA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script>
@@ -358,7 +358,6 @@
 const SUPABASE_URL = window.SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || '';
 window.supabaseClient = null;
-let currentProfile = null;
 let sessionRestoreInProgress = false;
 if (window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY) {
     try {
@@ -390,7 +389,7 @@ async function supabaseGetProfile(userId) {
     try {
         const { data, error } = await window.supabaseClient
             .from('profiles')
-            .select('id,email,fullname,phone,course,skills,experience_summary,photo_data_url,resume_path,resume_file_name')
+            .select('*')
             .eq('id', userId)
             .maybeSingle();
 
@@ -429,7 +428,7 @@ async function supabaseSaveProfile(profilePayload) {
         const { data, error } = await window.supabaseClient
             .from('profiles')
             .upsert(profilePayload, { onConflict: 'id' })
-            .select('id,email,fullname,phone,course,skills,experience_summary,photo_data_url,resume_path,resume_file_name')
+            .select()
             .single();
 
         if (error) throw error;
@@ -662,22 +661,19 @@ async function restoreSupabaseSession() {
                 fullname: userMetadata.full_name || userMetadata.name || session.user.email.split('@')[0]
             };
         }
-        currentProfile = {
-            id: profile.id || session.user.id,
-            email: profile.email || session.user.email,
-            fullname: profile.fullname || 'User',
-            phone: profile.phone || '',
-            course: profile.course || '',
-            skills: profile.skills || '',
-            experience_summary: profile.experience_summary || '',
-            photo_data_url: profile.photo_data_url || null,
-            resume_path: profile.resume_path || null,
-            resume_file_name: profile.resume_file_name || ''
-        };
         localStorage.setItem('imcc_user', JSON.stringify({
-            id: session.user.id,
             email: profile.email,
-            profile: { fullname: currentProfile.fullname }
+            profile: {
+                fullname: profile.fullname || 'User',
+                email: profile.email,
+                phone: profile.phone || '',
+                course: profile.course || '',
+                skills: profile.skills || '',
+                experienceSummary: profile.experience_summary || '',
+                photoDataUrl: profile.photo_data_url || null,
+                resumeDataUrl: profile.resume_data_url || null,
+                resumeFileName: profile.resume_file_name || ''
+            }
         }));
         updateNavAuthState();
 
@@ -803,21 +799,22 @@ async function openUserDashboard() {
         showLogin();
         return;
     }
+    const cachedUser = readLocalJson('imcc_user', null);
+    if (cachedUser && cachedUser.profile) {
+        document.body.classList.remove('auth-locked');
+        closeAuthModal();
+        showDashboard(cachedUser.profile, cachedUser.email);
+        return;
+    }
     const { data, error } = await window.supabaseClient.auth.getSession();
     const sessionUser = data && data.session ? data.session.user : null;
     if (error || !sessionUser || !isInstitutionalEmail(sessionUser.email)) {
         showLogin();
         return;
     }
-    const profile = await supabaseGetProfile(sessionUser.id);
-    if (!profile) {
-        showLogin();
-        return;
-    }
-    currentProfile = profile;
     document.body.classList.remove('auth-locked');
     closeAuthModal();
-    return showDashboard(profile, sessionUser.email);
+    return showDashboard(null, sessionUser.email, sessionUser.id);
 }
 
 async function openUserProfile() {
@@ -984,8 +981,9 @@ async function loadPublicJobs() {
     }
 
     refreshPublicJobs();
-    if (currentProfile) {
-        renderRecommendedJobs(currentProfile.course, currentProfile.skills);
+    const savedProfile = readLocalJson('imcc_user', null);
+    if (savedProfile && savedProfile.profile) {
+        renderRecommendedJobs(savedProfile.profile.course, savedProfile.profile.skills);
     }
 }
 
@@ -1175,7 +1173,6 @@ async function logoutAdmin() {
     }
     localStorage.removeItem('imcc_admin_session');
     localStorage.removeItem('imcc_user');
-    currentProfile = null;
     document.body.classList.add('auth-locked');
     document.getElementById('adminDashboard').style.display = 'none';
     document.getElementById('dashboard').style.display = 'none';
@@ -1222,7 +1219,11 @@ window.addEventListener("keydown", function(event) {
 
 window.addEventListener('DOMContentLoaded', function() {
     localStorage.removeItem('imcc_admin_session');
-    localStorage.removeItem('imcc_user');
+    const storedUser = readLocalJson('imcc_user', null);
+    if (storedUser && Object.prototype.hasOwnProperty.call(storedUser, 'password')) {
+        delete storedUser.password;
+        localStorage.setItem('imcc_user', JSON.stringify(storedUser));
+    }
     updateNavAuthState();
     // Supabase's onAuthStateChange listener (registered above) fires an
     // INITIAL_SESSION event on its own as soon as the client is ready, which
@@ -1520,8 +1521,9 @@ function generateCVPdf(profile) {
 
 async function showDashboard(cachedProfile, cachedEmail, sessionUserId) {
     if (!hasSupabaseConfig()) return showLogin();
-    const profileToRender = cachedProfile || currentProfile || { fullname: 'User' };
-    const emailToRender = cachedEmail || profileToRender.email || '';
+    const localUser = readLocalJson('imcc_user', null);
+    const profileToRender = cachedProfile || (localUser && localUser.profile) || { fullname: 'User' };
+    const emailToRender = cachedEmail || (localUser && localUser.email) || profileToRender.email || '';
     document.body.classList.remove('auth-locked');
     closeAuthModal();
     const stored = {
@@ -1534,27 +1536,11 @@ async function showDashboard(cachedProfile, cachedEmail, sessionUserId) {
             skills: profileToRender.skills || '',
             experienceSummary: profileToRender.experience_summary || profileToRender.experienceSummary || '',
             photoDataUrl: profileToRender.photo_data_url || profileToRender.photoDataUrl || null,
-            resumePath: profileToRender.resume_path || profileToRender.resumePath || null,
+            resumeDataUrl: profileToRender.resume_data_url || profileToRender.resumeDataUrl || null,
             resumeFileName: profileToRender.resume_file_name || profileToRender.resumeFileName || ''
         }
     };
-    currentProfile = {
-        id: profileToRender.id,
-        email: stored.email,
-        fullname: stored.profile.fullname,
-        phone: stored.profile.phone,
-        course: stored.profile.course,
-        skills: stored.profile.skills,
-        experience_summary: stored.profile.experienceSummary,
-        photo_data_url: stored.profile.photoDataUrl,
-        resume_path: stored.profile.resumePath,
-        resume_file_name: stored.profile.resumeFileName
-    };
-    localStorage.setItem('imcc_user', JSON.stringify({
-        id: currentProfile.id || '',
-        email: stored.email,
-        profile: { fullname: stored.profile.fullname }
-    }));
+    localStorage.setItem('imcc_user', JSON.stringify(stored));
     if (!stored || !stored.profile) return;
     const p = stored.profile;
     const profileComplete = Boolean(p.fullname && p.phone && p.course && p.skills && p.experienceSummary);
@@ -1602,7 +1588,7 @@ async function showDashboard(cachedProfile, cachedEmail, sessionUserId) {
                 <p class="resume-status"><strong>Uploaded resume:</strong> ${p.resumeFileName ? escapeHtml(p.resumeFileName) : 'None'}</p>
                 <div class="dashboard-actions">
                     <button class="register-btn" onclick="downloadMyCV()">Download My CV</button>
-                    ${p.resumePath ? '<button class="register-btn" onclick="downloadUploadedResume()">Download Resume</button>' : ''}
+                    ${p.resumeDataUrl ? '<button class="register-btn" onclick="downloadUploadedResume()">Download Resume</button>' : ''}
                     <button class="register-btn" onclick="editProfile()">Edit Profile</button>
                     <button class="clear-btn" onclick="logout()">Logout</button>
                 </div>
@@ -1622,25 +1608,15 @@ async function showDashboard(cachedProfile, cachedEmail, sessionUserId) {
 
     if (sessionUserId) {
         supabaseGetProfile(sessionUserId).then(function(remoteProfile) {
-            if (remoteProfile) {
-                currentProfile = remoteProfile;
-                showDashboard(remoteProfile, remoteProfile.email, null);
-            }
+            if (remoteProfile) showDashboard(remoteProfile, remoteProfile.email, null);
         });
     }
 }
 
 function downloadMyCV() {
-    if (currentProfile) {
-        return generateCVPdf({
-            fullname: currentProfile.fullname,
-            email: currentProfile.email,
-            phone: currentProfile.phone,
-            course: currentProfile.course,
-            skills: currentProfile.skills,
-            experienceSummary: currentProfile.experience_summary,
-            photoDataUrl: currentProfile.photo_data_url
-        });
+    const stored = readLocalJson('imcc_user', null);
+    if (stored && stored.profile) {
+        return generateCVPdf(stored.profile);
     }
 
     // fallback: try to build profile from registration form fields
@@ -1694,11 +1670,12 @@ async function logout() {
 }
 
 function editProfile() {
-    if (!currentProfile) return alert('No profile found to edit.');
-    const p = currentProfile;
+    const stored = readLocalJson('imcc_user', null);
+    if (!stored || !stored.profile) return alert('No profile found to edit.');
+    const p = stored.profile;
 
     document.getElementById('editName').value = p.fullname || '';
-    document.getElementById('editEmail').value = p.email || '';
+    document.getElementById('editEmail').value = stored.email || p.email || '';
     document.getElementById('editPhone').value = p.phone || '';
     document.getElementById('editCourse').value = p.course || '';
     document.getElementById('editSkills').value = p.skills || '';
@@ -1708,17 +1685,15 @@ function editProfile() {
     document.getElementById('profileEditError').textContent = '';
 
     const preview = document.getElementById('editPhotoPreview');
-    if (p.photo_data_url) {
-        preview.src = p.photo_data_url;
+    if (p.photoDataUrl) {
+        preview.src = p.photoDataUrl;
         preview.style.display = 'block';
     } else {
         preview.src = '';
         preview.style.display = 'none';
     }
     const resumeStatus = document.getElementById('editResumeStatus');
-    if (resumeStatus) resumeStatus.textContent = p.resume_file_name
-        ? (p.resume_path ? 'Current file: ' : 'Please upload this resume again: ') + p.resume_file_name
-        : 'PDF, DOC, or DOCX up to 5 MB.';
+    if (resumeStatus) resumeStatus.textContent = p.resumeFileName ? 'Current file: ' + p.resumeFileName : 'PDF, DOC, or DOCX up to 5 MB.';
 
     const modal = document.getElementById('profileEditModal');
     modal.classList.add('show');
@@ -1734,7 +1709,8 @@ function closeProfileEditModal() {
 }
 
 function downloadProfileCvFromEditor() {
-    const profile = currentProfile || {};
+    const stored = readLocalJson('imcc_user', null);
+    const profile = stored && stored.profile ? stored.profile : {};
     const currentProfile = {
         fullname: document.getElementById('editName').value.trim(),
         email: document.getElementById('editEmail').value.trim(),
@@ -1742,7 +1718,7 @@ function downloadProfileCvFromEditor() {
         course: document.getElementById('editCourse').value.trim(),
         skills: document.getElementById('editSkills').value.trim(),
         experienceSummary: document.getElementById('editExperienceSummary').value.trim(),
-        photoDataUrl: profile.photo_data_url || null
+        photoDataUrl: profile.photoDataUrl || null
     };
     if (!currentProfile.fullname || !currentProfile.course || !currentProfile.skills || !currentProfile.experienceSummary) {
         document.getElementById('profileEditError').textContent = 'Complete your profile details before downloading your CV.';
@@ -1767,20 +1743,8 @@ function previewEditProfilePhoto(event) {
 
 async function handleProfileEditSubmit(event) {
     event.preventDefault();
-    if (!currentProfile) return closeProfileEditModal();
-    const stored = {
-        email: currentProfile.email,
-        profile: {
-            fullname: currentProfile.fullname,
-            phone: currentProfile.phone,
-            course: currentProfile.course,
-            skills: currentProfile.skills,
-            experienceSummary: currentProfile.experience_summary,
-            photoDataUrl: currentProfile.photo_data_url,
-            resumePath: currentProfile.resume_path,
-            resumeFileName: currentProfile.resume_file_name
-        }
-    };
+    const stored = readLocalJson('imcc_user', null);
+    if (!stored || !stored.profile) return closeProfileEditModal();
 
     const errorEl = document.getElementById('profileEditError');
     const saveButton = event.target.querySelector('button[type="submit"]');
@@ -1821,12 +1785,12 @@ async function handleProfileEditSubmit(event) {
 
     setSavingState(true);
 
-    const save = async function(photoDataUrl) {
+    const save = async function(photoDataUrl, resumeDataUrl, resumeFileName) {
         const profile = Object.assign({}, stored.profile, fields, {
             email: stored.email,
             photoDataUrl: photoDataUrl || stored.profile.photoDataUrl || null,
-            resumePath: stored.profile.resumePath || null,
-            resumeFileName: stored.profile.resumeFileName || ''
+            resumeDataUrl: resumeDataUrl || stored.profile.resumeDataUrl || null,
+            resumeFileName: resumeFileName || stored.profile.resumeFileName || ''
         });
         if (hasSupabaseConfig()) {
             let sessionData;
@@ -1840,9 +1804,17 @@ async function handleProfileEditSubmit(event) {
                 if (result.error) throw result.error;
                 sessionData = result.data;
             } catch (error) {
-                errorEl.textContent = error && error.message
-                    ? error.message
-                    : 'Your Google session could not be verified. Please sign in again.';
+                try {
+                    localStorage.setItem('imcc_user', JSON.stringify(Object.assign({}, stored, { profile: profile })));
+                    errorEl.textContent = 'Saved on this device. Cloud sync is temporarily unavailable.';
+                    updateNavAuthState();
+                    closeProfileEditModal();
+                    await showDashboard();
+                } catch (localError) {
+                    errorEl.textContent = error && error.message
+                        ? error.message
+                        : 'Your Google session could not be verified. Please sign in again.';
+                }
                 setSavingState(false);
                 return;
             }
@@ -1851,78 +1823,69 @@ async function handleProfileEditSubmit(event) {
                 setSavingState(false);
                 return;
             }
-
-            const oldResumePath = stored.profile.resumePath;
-            let uploadedResumePath = oldResumePath || null;
-            if (resumeFile) {
-                const extensionByType = {
-                    'application/pdf': 'pdf',
-                    'application/msword': 'doc',
-                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx'
-                };
-                uploadedResumePath = sessionData.user.id + '/' + window.crypto.randomUUID() + '.' + extensionByType[resumeFile.type];
-                const uploadResult = await window.supabaseClient.storage
-                    .from('application-documents')
-                    .upload(uploadedResumePath, resumeFile, { contentType: resumeFile.type, upsert: false });
-                if (uploadResult.error) throw uploadResult.error;
-                profile.resumePath = uploadedResumePath;
-                profile.resumeFileName = resumeFile.name;
-            }
-
             const profilePayload = {
                 id: sessionData.user.id, fullname: fields.fullname, email: sessionData.user.email,
                 phone: fields.phone, course: fields.course, skills: fields.skills,
                 experience_summary: fields.experienceSummary, photo_data_url: profile.photoDataUrl,
-                resume_data_url: resumeFile ? null : undefined,
-                resume_path: uploadedResumePath,
-                resume_file_name: profile.resumeFileName
+                resume_data_url: profile.resumeDataUrl, resume_file_name: profile.resumeFileName
             };
-            const saved = await supabaseSaveProfile(profilePayload);
+            let saved = await supabaseSaveProfile(profilePayload);
+            const firstSaveError = window.lastSupabaseProfileError;
+            if (!saved && firstSaveError && /resume_data_url|resume_file_name|column .* does not exist/i.test(firstSaveError.message || '')) {
+                saved = await supabaseSaveProfile({
+                    id: sessionData.user.id, fullname: fields.fullname, email: sessionData.user.email,
+                    phone: fields.phone, course: fields.course, skills: fields.skills,
+                    experience_summary: fields.experienceSummary, photo_data_url: profile.photoDataUrl
+                });
+            }
             if (!saved) {
                 const saveError = window.lastSupabaseProfileError;
-                if (resumeFile) {
-                    const { error: cleanupError } = await window.supabaseClient.storage
-                        .from('application-documents')
-                        .remove([uploadedResumePath]);
-                    if (cleanupError) console.warn('Unused uploaded resume could not be removed:', cleanupError.message);
+                if (saveError && /failed to fetch|network|fetch/i.test(saveError.message || '')) {
+                    try {
+                        localStorage.setItem('imcc_user', JSON.stringify(Object.assign({}, stored, { profile: profile })));
+                        errorEl.textContent = 'Saved on this device. Cloud sync is temporarily unavailable.';
+                        updateNavAuthState();
+                        closeProfileEditModal();
+                        await showDashboard();
+                    } catch (localError) {
+                        errorEl.textContent = 'Profile could not be saved locally. Please use a smaller resume file.';
+                    }
+                } else {
+                    errorEl.textContent = saveError && saveError.message
+                        ? 'Profile could not be saved: ' + saveError.message
+                        : 'Your profile could not be updated.';
                 }
-                errorEl.textContent = saveError && saveError.message
-                    ? 'Profile could not be saved: ' + saveError.message
-                    : 'Your profile could not be updated.';
                 setSavingState(false);
                 return;
             }
-
-            if (resumeFile && oldResumePath) {
-                const { error: removeOldError } = await window.supabaseClient.storage
-                    .from('application-documents')
-                    .remove([oldResumePath]);
-                if (removeOldError) console.warn('Previous resume could not be removed:', removeOldError.message);
-            }
-
-            currentProfile = saved;
-        } else {
-            errorEl.textContent = 'Profile storage is not configured. Your changes were not saved.';
+        }
+        const nextUser = Object.assign({}, stored, { profile: profile });
+        try {
+            localStorage.setItem('imcc_user', JSON.stringify(nextUser));
+        } catch (error) {
+            errorEl.textContent = 'Profile saved remotely, but this resume is too large for local browser storage. Use a smaller file.';
             setSavingState(false);
             return;
         }
-        localStorage.setItem('imcc_user', JSON.stringify({
-            id: currentProfile.id || '',
-            email: currentProfile.email || stored.email,
-            profile: { fullname: currentProfile.fullname || fields.fullname }
-        }));
         updateNavAuthState();
         closeProfileEditModal();
-        await showDashboard(currentProfile, currentProfile.email);
+        await showDashboard();
         setSavingState(false);
     };
 
     const finishSave = function(photoDataUrl) {
-        save(photoDataUrl).catch(function(error) {
-            console.warn('Profile save failed:', error.message);
-            errorEl.textContent = error.message || 'Your profile could not be saved. Please try again.';
-            setSavingState(false);
-        });
+        const runSave = function(resumeDataUrl, resumeFileName) {
+            save(photoDataUrl, resumeDataUrl, resumeFileName).catch(function(error) {
+                console.warn('Profile save failed:', error.message);
+                errorEl.textContent = 'Your profile could not be saved. Please try again.';
+                setSavingState(false);
+            });
+        };
+        if (!resumeFile) return runSave(null, '');
+        const resumeReader = new FileReader();
+        resumeReader.onload = function(fileEvent) { runSave(fileEvent.target.result, resumeFile.name); };
+        resumeReader.onerror = function() { errorEl.textContent = 'The resume file could not be read. Please try again.'; setSavingState(false); };
+        resumeReader.readAsDataURL(resumeFile);
     };
 
     if (photoFile) {
@@ -1935,31 +1898,21 @@ async function handleProfileEditSubmit(event) {
     }
 }
 
-async function downloadUploadedResume() {
-    if (!currentProfile || !currentProfile.resume_path) return;
-    try {
-        const { data, error } = await window.supabaseClient.storage
-            .from('application-documents')
-            .createSignedUrl(currentProfile.resume_path, 60);
-        if (error) throw error;
-        const link = document.createElement('a');
-        link.href = data.signedUrl;
-        link.target = '_blank';
-        link.rel = 'noopener noreferrer';
-        link.download = currentProfile.resume_file_name || 'IMCC-resume';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    } catch (error) {
-        console.warn('Resume download link could not be created:', error.message);
-        alert('Your resume could not be opened. Please try again.');
-    }
+function downloadUploadedResume() {
+    const stored = readLocalJson('imcc_user', null);
+    const profile = stored && stored.profile;
+    if (!profile || !profile.resumeDataUrl) return;
+    const link = document.createElement('a');
+    link.href = profile.resumeDataUrl;
+    link.download = profile.resumeFileName || 'IMCC-resume';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 }
 
 function applyJob(jobTitle, url) {
     if (url) {
-        const safeUrl = safeExternalUrl(url);
-        if (safeUrl !== '#') window.open(safeUrl, '_blank', 'noopener,noreferrer');
+        window.open(url, '_blank');
         return;
     }
 
@@ -2219,22 +2172,11 @@ function renderRecommendedJobs(course, skills) {
             '<h3>' + escapeHtml(title) + '</h3>' +
             '<p class="company">' + escapeHtml(company) + '</p>' +
             '<p class="job-info">' + escapeHtml(info) + '</p>' +
-            '<div class="recommended-actions"><button type="button" class="apply-btn recommended-view-job" data-job-title="' + escapeHtml(title) + '">View Job</button>' +
-            '<button type="button" class="why-match-btn recommended-why-match" data-match-reason="' + escapeHtml(why) + '">Why this matches?</button></div>' +
+            '<div class="recommended-actions"><button type="button" class="apply-btn" onclick="scrollToRecommendedJob(event, \'' + title.replace(/'/g, "\\'") + '\')">View Job</button>' +
+            '<button type="button" class="why-match-btn" onclick="showMatchReason(event, this, \'' + why.replace(/'/g, "\\'") + '\')">Why this matches?</button></div>' +
             '<p class="match-reason" hidden></p>' +
             '</article>';
     }).join('');
-
-    container.querySelectorAll('.recommended-view-job').forEach(function(button) {
-        button.addEventListener('click', function(event) {
-            scrollToRecommendedJob(event, button.dataset.jobTitle);
-        });
-    });
-    container.querySelectorAll('.recommended-why-match').forEach(function(button) {
-        button.addEventListener('click', function(event) {
-            showMatchReason(event, button, button.dataset.matchReason);
-        });
-    });
 }
 
 function showMatchReason(event, button, reason) {
@@ -2244,6 +2186,27 @@ function showMatchReason(event, button, reason) {
     reasonElement.hidden = !reasonElement.hidden;
 }
 
+async function getCareerAiAuth() {
+    const headers = { 'Content-Type': 'application/json' };
+    let profile = {};
+    try {
+        if (window.supabaseClient) {
+            const { data } = await window.supabaseClient.auth.getSession();
+            if (data && data.session && data.session.access_token) {
+                headers['Authorization'] = 'Bearer ' + data.session.access_token;
+                const stored = JSON.parse(localStorage.getItem('imcc_user') || 'null');
+                const p = stored && stored.profile ? stored.profile : {};
+                profile = {
+                    course: p.course || '',
+                    skills: p.skills || '',
+                    experienceSummary: p.experienceSummary || ''
+                };
+            }
+        }
+    } catch (e) { /* anonymous request */ }
+    return { headers: headers, profile: profile };
+}
+
 function askCareerAI() {
     const prompt = document.getElementById('aiPrompt');
     const text = prompt ? prompt.value.trim() : '';
@@ -2251,12 +2214,6 @@ function askCareerAI() {
     const sendButton = document.getElementById('careerAiSendButton');
     if (!text) {
         if (prompt) prompt.focus();
-        return;
-    }
-    if (!hasSupabaseConfig()) {
-        result.classList.add('recommendation-warning');
-        result.style.display = 'block';
-        result.textContent = 'Sign in with your institutional account to use Career AI.';
         return;
     }
 
@@ -2274,7 +2231,7 @@ function askCareerAI() {
         });
     }).filter(function(job) {
         return job.title && job.company;
-    }).slice(0, 30);
+    }).slice(0, 80);
 
     result.classList.remove('recommendation-warning');
     result.style.display = 'block';
@@ -2284,17 +2241,13 @@ function askCareerAI() {
         sendButton.textContent = 'Thinking...';
     }
 
-    window.supabaseClient.auth.getSession().then(function(result) {
-        if (result.error) throw result.error;
-        if (!result.data.session) throw new Error('Sign in with your institutional account to use Career AI.');
-        return fetch('/api/career-agent', {
+    getCareerAiAuth().then(function(auth) {
+    return fetch('/api/career-agent', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + result.data.session.access_token
-        },
+        headers: auth.headers,
         body: JSON.stringify({
             prompt: text,
+            profile: auth.profile,
             jobs: jobs.map(function(job) {
                 return {
                     title: job.title,
@@ -2308,18 +2261,8 @@ function askCareerAI() {
         })
     });
     }).then(async function(response) {
-        let data;
-        try {
-            data = await response.json();
-        } catch (error) {
-            const message = response.status === 404
-                ? 'Career AI is not deployed on this Vercel project. Redeploy with the api/career-agent.js function included.'
-                : response.status === 494
-                    ? 'Vercel could not start the Career AI function. Redeploy the latest code and check the Function Runtime Logs if this continues.'
-                    : 'Career AI returned an invalid response (HTTP ' + response.status + '). Please try again shortly.';
-            throw new Error(message);
-        }
-        if (!response.ok) throw new Error(data.error || 'Career AI is temporarily unavailable (HTTP ' + response.status + ').');
+        const data = await response.json().catch(function() { return {}; });
+        if (!response.ok) throw new Error(data.error || 'Career AI is temporarily unavailable.');
 
         result.replaceChildren();
         const answer = document.createElement('p');
@@ -2575,13 +2518,14 @@ function recommendJob() {
         let title = job.querySelector('h3').innerText;
         let company = job.querySelector('.company').innerText;
         let info = Array.from(job.querySelectorAll('.job-info')).map(function(el) { return el.innerText; }).join(' • ');
-        let url = safeExternalUrl(job.dataset.url || '');
+        let url = job.dataset.url || '';
+        let safeTitle = title.replace(/'/g, "\\'");
         listHtml += '<li class="recommendation-item">';
-        listHtml += '<a href="#" class="recommendation-suggestion" data-job-title="' + escapeHtml(title) + '">';
-        listHtml += '<strong>' + escapeHtml(title) + '</strong><br>' + escapeHtml(company) + ' • ' + escapeHtml(info);
+        listHtml += '<a href="#" class="recommendation-suggestion" onclick="scrollToRecommendedJob(event, \'' + safeTitle + '\')">';
+        listHtml += '<strong>' + title + '</strong><br>' + company + ' • ' + info;
         listHtml += '</a>';
-        if (url !== '#') {
-            listHtml += '<br><a href="' + escapeHtml(url) + '" target="_blank" rel="noopener noreferrer">View job details</a>';
+        if (url) {
+            listHtml += '<br><a href="' + url + '" target="_blank" rel="noopener noreferrer">View job details</a>';
         }
         listHtml += '</li>';
     });
@@ -2600,11 +2544,6 @@ function recommendJob() {
         listHtml +
         "<br>" +
         "Tip: include more specific skills, tools, or career goals for even better recommendations.";
-    result.querySelectorAll('.recommendation-suggestion').forEach(function(link) {
-        link.addEventListener('click', function(event) {
-            scrollToRecommendedJob(event, link.dataset.jobTitle);
-        });
-    });
 
 }
 

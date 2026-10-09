@@ -574,7 +574,44 @@ button {
     animation: fadeIn 0.25s ease-out;
 }
 
-.recommendation-warning {
+.career-ai-answer {
+    margin: 0;
+    line-height: 1.6;
+    white-space: pre-wrap;
+}
+
+.career-ai-matches-title {
+    margin-top: 16px;
+    color: var(--primary-dark);
+    font-size: 14px;
+}
+
+.career-ai-matches {
+    margin-top: 6px;
+    padding: 0;
+    list-style: none;
+}
+
+.career-ai-matches li {
+    padding: 10px 0;
+    border-top: 1px solid rgba(22, 163, 74, 0.2);
+}
+
+.career-ai-matches p {
+    margin: 5px 0;
+}
+
+.career-ai-matches a {
+    color: var(--primary-dark);
+    font-weight: 700;
+}
+
+.career-ai-input-row button:disabled {
+    cursor: wait;
+    opacity: 0.7;
+}
+
+#recommendation-result.recommendation-warning {
     background: #fee2e2;
     border-left-color: #dc2626;
     color: #991b1b;

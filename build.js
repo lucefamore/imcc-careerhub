@@ -13,6 +13,7 @@ const staticFiles = [
     'jobs-socialwork.js',
     'jobs-chtm.js',
     'jobs-renderer.js',
+    'flowise-widget.js',
     'supabase-config.js'
 ];
 

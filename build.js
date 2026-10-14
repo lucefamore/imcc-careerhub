@@ -18,6 +18,7 @@ const staticFiles = [
 ];
 
 fs.mkdirSync(output, { recursive: true });
+fs.copyFileSync(path.join(root, 'imcc.html'), path.join(root, 'index.html'));
 fs.copyFileSync(path.join(root, 'imcc.html'), path.join(output, 'index.html'));
 
 for (const file of staticFiles) {

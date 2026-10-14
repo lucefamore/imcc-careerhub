@@ -121,6 +121,12 @@
                 <button class="search-btn" id="careerAiSendButton" type="button" onclick="askCareerAI()">Send</button>
                 <button class="ai-clear-btn" type="button" onclick="clearRecommendation()">Clear</button>
             </div>
+            <div class="career-ai-quick-questions" role="group" aria-label="Quick career questions">
+                <button type="button" onclick="askCareerQuickQuestion('fresh-graduates')">Jobs for fresh graduates</button>
+                <button type="button" onclick="askCareerQuickQuestion('remote')">Remote jobs</button>
+                <button type="button" onclick="askCareerQuickQuestion('iligan')">Jobs in Iligan</button>
+                <button type="button" onclick="askCareerQuickQuestion('my-course')">Jobs for my course</button>
+            </div>
             <p class="career-ai-hint">Try: “I know HTML and Python” or “I want a healthcare job.”</p>
             <div id="recommendation-result" role="status" aria-live="polite"></div>
         </div>
@@ -163,6 +169,14 @@
 
         <div id="dashboardProfile"></div>
 
+        <section class="my-applications-section" aria-labelledby="myApplicationsTitle">
+            <h3 id="myApplicationsTitle">My Applications</h3>
+            <p id="myApplicationsStatus" role="status" aria-live="polite"></p>
+            <div id="myApplicationsList" class="my-application-list">
+                <p class="muted">You haven’t marked any jobs as applied yet. Choose “Mark as applied” on a job to track it here.</p>
+            </div>
+        </section>
+
         <div id="dashboardRecommendations" style="margin-top:18px"></div>
 
     </div>
@@ -188,6 +202,21 @@
             <div class="admin-stat">
                 <span>Admin</span>
                 <strong>Online</strong>
+            </div>
+        </div>
+
+        <div class="admin-panel">
+            <h3>Application Clicks — Last 30 Days</h3>
+            <p id="adminJobAnalyticsStatus" class="admin-analytics-status" role="status" aria-live="polite">Loading click analytics...</p>
+            <div class="admin-analytics-grid">
+                <section aria-labelledby="adminTopCategoriesTitle">
+                    <h4 id="adminTopCategoriesTitle">Top Categories</h4>
+                    <ul id="adminTopCategories" class="admin-list"></ul>
+                </section>
+                <section aria-labelledby="adminTopJobsTitle">
+                    <h4 id="adminTopJobsTitle">Top Jobs by Apply Clicks</h4>
+                    <ul id="adminTopJobs" class="admin-list"></ul>
+                </section>
             </div>
         </div>
 
@@ -316,6 +345,47 @@
             </div>
             <p class="form-error" id="profileEditError"></p>
         </form>
+    </div>
+</div>
+
+<div class="profile-edit-modal interview-modal" id="interviewModal" aria-hidden="true">
+    <div class="profile-edit-card interview-card" role="dialog" aria-modal="true" aria-labelledby="interviewTitle">
+        <button class="close-btn" id="interviewCloseButton" type="button" onclick="closeInterviewModal()" aria-label="Close interview practice">&times;</button>
+        <div class="profile-edit-heading">
+            <span class="profile-edit-kicker">Career practice</span>
+            <h3 id="interviewTitle">Practice interview</h3>
+            <p id="interviewJobLabel"></p>
+        </div>
+        <div id="interviewQuestionPanel" class="interview-question-panel" hidden>
+            <p id="interviewProgress" class="interview-progress"></p>
+            <h4 id="interviewQuestion"></h4>
+            <label for="interviewAnswer">Your answer (up to 800 characters)</label>
+            <textarea id="interviewAnswer" rows="5" maxlength="800" oninput="updateInterviewCharacterCount(this)"></textarea>
+            <p id="interviewCharacterCount" class="interview-character-count">0 / 800</p>
+            <button class="submit-btn" id="interviewSubmitButton" type="button" onclick="submitInterviewAnswer()">Get feedback</button>
+        </div>
+        <div id="interviewFeedback" class="interview-feedback" aria-live="polite"></div>
+        <p id="interviewStatus" class="form-error" role="status" aria-live="polite"></p>
+        <button class="submit-btn" id="interviewNextButton" type="button" onclick="advanceInterview()" hidden>Next question</button>
+    </div>
+</div>
+
+<div class="profile-edit-modal cover-letter-modal" id="coverLetterModal" aria-hidden="true">
+    <div class="profile-edit-card cover-letter-card" role="dialog" aria-modal="true" aria-labelledby="coverLetterTitle">
+        <button class="close-btn" id="coverLetterCloseButton" type="button" onclick="closeCoverLetterModal()" aria-label="Close application message draft">&times;</button>
+        <div class="profile-edit-heading">
+            <span class="profile-edit-kicker">Application support</span>
+            <h3 id="coverLetterTitle">Draft application message</h3>
+            <p id="coverLetterJobLabel"></p>
+        </div>
+        <label class="cover-letter-draft-label" for="coverLetterDraft">Application message draft</label>
+        <textarea id="coverLetterDraft" class="cover-letter-draft" rows="9" aria-live="polite"></textarea>
+        <p class="cover-letter-disclaimer">This is a draft. Review and edit before sending.</p>
+        <p id="coverLetterStatus" class="form-error" role="status" aria-live="polite"></p>
+        <div class="cover-letter-actions">
+            <button class="submit-btn" id="coverLetterCopyButton" type="button" onclick="copyCoverLetterDraft()" disabled>Copy</button>
+            <button class="download-cv-btn" id="coverLetterRegenerateButton" type="button" onclick="regenerateCoverLetter()" disabled>Regenerate</button>
+        </div>
     </div>
 </div>
 
@@ -454,6 +524,7 @@ async function supabaseGetJobs() {
         return (data || []).map(function(job) {
             return {
                 id: 'supabase-' + job.id,
+                applicationJobId: job.id,
                 title: job.title,
                 company: job.company,
                 category: job.category,
@@ -970,7 +1041,12 @@ async function loadPublicJobs() {
                 return (item.title || '') === (job.title || '') && (item.company || '') === (job.company || '');
             });
 
-            if (!found) {
+            if (found) {
+                const matchingJob = grouped[category].jobs.find(function(item) {
+                    return (item.title || '') === (job.title || '') && (item.company || '') === (job.company || '');
+                });
+                matchingJob.applicationJobId = job.applicationJobId;
+            } else {
                 grouped[category].jobs.push(Object.assign({}, job));
             }
         });
@@ -1134,6 +1210,80 @@ async function refreshAdminJobList() {
     }).join('');
 }
 
+async function loadAdminJobAnalytics() {
+    const status = document.getElementById('adminJobAnalyticsStatus');
+    const categoriesList = document.getElementById('adminTopCategories');
+    const jobsList = document.getElementById('adminTopJobs');
+    if (!status || !categoriesList || !jobsList) return;
+    status.textContent = 'Loading click analytics...';
+    categoriesList.replaceChildren();
+    jobsList.replaceChildren();
+
+    try {
+        const { data: authData, error: authError } = await window.supabaseClient.auth.getUser();
+        const admin = authData && authData.user && !authError &&
+            isInstitutionalEmail(authData.user.email) &&
+            await supabaseIsAdmin(authData.user.id);
+        if (!admin) throw new Error('Administrator access is required to view job analytics.');
+
+        const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+        const events = [];
+        const pageSize = 1000;
+        for (let offset = 0; ; offset += pageSize) {
+            const { data, error } = await window.supabaseClient
+                .from('job_events')
+                .select('job_key,category')
+                .eq('event_type', 'apply_click')
+                .gte('created_at', since)
+                .range(offset, offset + pageSize - 1);
+            if (error) throw error;
+            events.push.apply(events, data || []);
+            if (!data || data.length < pageSize) break;
+        }
+
+        const categoryCounts = new Map();
+        const jobCounts = new Map();
+        events.forEach(function(event) {
+            const category = event.category || 'Uncategorized';
+            const jobKey = event.job_key || 'Unknown job';
+            categoryCounts.set(category, (categoryCounts.get(category) || 0) + 1);
+            jobCounts.set(jobKey, (jobCounts.get(jobKey) || 0) + 1);
+        });
+
+        function renderCounts(list, counts, emptyMessage) {
+            const top = Array.from(counts.entries())
+                .sort(function(a, b) { return b[1] - a[1] || a[0].localeCompare(b[0]); })
+                .slice(0, 5);
+            if (!top.length) {
+                const empty = document.createElement('li');
+                empty.textContent = emptyMessage;
+                list.appendChild(empty);
+                return;
+            }
+            top.forEach(function(entry) {
+                const item = document.createElement('li');
+                item.textContent = entry[0] + ' — ' + entry[1] + (entry[1] === 1 ? ' click' : ' clicks');
+                list.appendChild(item);
+            });
+        }
+
+        renderCounts(categoriesList, categoryCounts, 'No application clicks recorded in the last 30 days.');
+        renderCounts(jobsList, jobCounts, 'No application clicks recorded in the last 30 days.');
+        status.textContent = events.length + (events.length === 1
+            ? ' apply click in the last 30 days.'
+            : ' apply clicks in the last 30 days.');
+    } catch (error) {
+        console.warn('Job click analytics could not be loaded:', error && error.message);
+        status.textContent = 'Click analytics could not be loaded. Please try again.';
+        const message = 'Analytics are temporarily unavailable.';
+        [categoriesList, jobsList].forEach(function(list) {
+            const item = document.createElement('li');
+            item.textContent = message;
+            list.appendChild(item);
+        });
+    }
+}
+
 async function showAdminDashboard() {
     if (!hasSupabaseConfig()) return showLogin();
     const { data: authData, error: authError } = await window.supabaseClient.auth.getUser();
@@ -1157,6 +1307,7 @@ async function showAdminDashboard() {
     let userList = document.getElementById('adminUsersList');
 
     await refreshAdminJobList();
+    await loadAdminJobAnalytics();
 
     if (userList) {
         const list = users.map(function(user) {
@@ -1209,11 +1360,25 @@ document.getElementById("jobEditorModal").addEventListener("click", function(eve
     }
 });
 
+document.getElementById("interviewModal").addEventListener("click", function(event) {
+    if (event.target === event.currentTarget) {
+        closeInterviewModal();
+    }
+});
+
+document.getElementById("coverLetterModal").addEventListener("click", function(event) {
+    if (event.target === event.currentTarget) {
+        closeCoverLetterModal();
+    }
+});
+
 window.addEventListener("keydown", function(event) {
     if (event.key === "Escape") {
         closeAuthModal();
         closeProfileEditModal();
         closeJobEditor();
+        closeInterviewModal();
+        closeCoverLetterModal();
     }
 });
 
@@ -1589,8 +1754,23 @@ async function showDashboard(cachedProfile, cachedEmail, sessionUserId) {
                 <div class="dashboard-actions">
                     <button class="register-btn" onclick="downloadMyCV()">Download My CV</button>
                     ${p.resumeDataUrl ? '<button class="register-btn" onclick="downloadUploadedResume()">Download Resume</button>' : ''}
+                    <button class="register-btn" id="profileFeedbackButton" type="button" onclick="requestProfileFeedback()">Get AI feedback on my profile</button>
                     <button class="register-btn" onclick="editProfile()">Edit Profile</button>
                     <button class="clear-btn" onclick="logout()">Logout</button>
+                </div>
+                <div class="profile-feedback-card" id="profileFeedbackCard" hidden>
+                    <h4>AI profile feedback</h4>
+                    <div id="profileFeedbackStrengths"></div>
+                    <div id="profileFeedbackImprovements"></div>
+                    <div class="profile-feedback-summary">
+                        <strong>Rewritten summary</strong>
+                        <p id="profileFeedbackSummary"></p>
+                    </div>
+                    <div class="profile-feedback-actions">
+                        <button class="register-btn" id="copyProfileSummaryButton" type="button" onclick="copyProfileFeedbackSummary()">Copy rewritten summary</button>
+                        <button class="register-btn" id="saveProfileSummaryButton" type="button" onclick="saveProfileFeedbackSummary()">Save rewritten summary</button>
+                    </div>
+                    <p id="profileFeedbackStatus" role="status" aria-live="polite"></p>
                 </div>
             </div>
             <div class="recommendation-card">
@@ -1605,11 +1785,212 @@ async function showDashboard(cachedProfile, cachedEmail, sessionUserId) {
     // show dashboard area
     document.getElementById('dashboard').style.display = 'block';
     document.getElementById('dashboard').scrollIntoView({behavior:'smooth'});
+    loadMyApplications();
 
     if (sessionUserId) {
         supabaseGetProfile(sessionUserId).then(function(remoteProfile) {
             if (remoteProfile) showDashboard(remoteProfile, remoteProfile.email, null);
         });
+    }
+}
+
+function getApplicationStatusLabel(status) {
+    const labels = {
+        submitted: 'Applied',
+        under_review: 'Under review',
+        interview: 'Interview',
+        offered: 'Offer',
+        rejected: 'Rejected',
+        withdrawn: 'Withdrawn'
+    };
+    return labels[status] || 'Status unavailable';
+}
+
+async function getStudentApplicationSession() {
+    if (!window.supabaseClient) {
+        showLogin();
+        setAuthError('login', 'Please sign in with your @imcc.edu.ph account to manage applications.');
+        return null;
+    }
+    const { data, error } = await window.supabaseClient.auth.getSession();
+    if (error) throw error;
+    const session = data && data.session;
+    if (!session || !session.access_token || !isInstitutionalEmail(session.user && session.user.email)) {
+        showLogin();
+        setAuthError('login', 'Please sign in with your @imcc.edu.ph account to manage applications.');
+        return null;
+    }
+    return session;
+}
+
+async function loadMyApplications() {
+    const list = document.getElementById('myApplicationsList');
+    const status = document.getElementById('myApplicationsStatus');
+    if (!list || !status) return;
+    status.textContent = '';
+
+    try {
+        const session = await getStudentApplicationSession();
+        if (!session) return;
+        const { data: applications, error } = await window.supabaseClient
+            .from('applications')
+            .select('id,job_id,applicant_id,status,created_at,status_updated_at')
+            .eq('applicant_id', session.user.id)
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+
+        if (!applications || !applications.length) {
+            list.replaceChildren();
+            const empty = document.createElement('p');
+            empty.className = 'muted';
+            empty.textContent = 'You haven’t marked any jobs as applied yet. Choose “Mark as applied” on a job to track it here.';
+            list.appendChild(empty);
+            return;
+        }
+
+        const jobIds = Array.from(new Set(applications.map(function(application) { return application.job_id; })));
+        const jobsResult = await window.supabaseClient
+            .from('jobs')
+            .select('id,title,company')
+            .in('id', jobIds);
+        if (jobsResult.error) throw jobsResult.error;
+
+        const eventsResult = await window.supabaseClient
+            .from('application_events')
+            .select('application_id,old_status,new_status,created_at')
+            .in('application_id', applications.map(function(application) { return application.id; }))
+            .order('created_at', { ascending: false });
+        if (eventsResult.error) throw eventsResult.error;
+
+        const jobsById = new Map((jobsResult.data || []).map(function(job) { return [job.id, job]; }));
+        const eventsByApplication = new Map();
+        (eventsResult.data || []).forEach(function(event) {
+            if (!eventsByApplication.has(event.application_id)) eventsByApplication.set(event.application_id, []);
+            eventsByApplication.get(event.application_id).push(event);
+        });
+
+        const cards = applications.map(function(application) {
+            const job = jobsById.get(application.job_id);
+            const card = document.createElement('article');
+            card.className = 'my-application-item';
+
+            const title = document.createElement('h4');
+            title.textContent = job ? job.title + ' at ' + job.company : 'Job posting no longer available';
+            card.appendChild(title);
+
+            const currentStatus = document.createElement('p');
+            currentStatus.className = 'my-application-meta';
+            currentStatus.textContent = 'Status: ' + getApplicationStatusLabel(application.status);
+            card.appendChild(currentStatus);
+
+            const history = eventsByApplication.get(application.id) || [];
+            if (history.length) {
+                const historyList = document.createElement('ul');
+                historyList.className = 'application-status-history';
+                history.forEach(function(event) {
+                    const entry = document.createElement('li');
+                    const date = new Date(event.created_at);
+                    const dateLabel = Number.isNaN(date.getTime()) ? '' : ' — ' + date.toLocaleDateString();
+                    entry.textContent = getApplicationStatusLabel(event.new_status) + dateLabel;
+                    historyList.appendChild(entry);
+                });
+                card.appendChild(historyList);
+            }
+
+            if (application.status === 'submitted') {
+                const withdraw = document.createElement('button');
+                withdraw.type = 'button';
+                withdraw.className = 'application-withdraw-btn';
+                withdraw.textContent = 'Withdraw application';
+                withdraw.addEventListener('click', function() {
+                    withdrawMyApplication(application, withdraw);
+                });
+                card.appendChild(withdraw);
+            }
+            return card;
+        });
+        list.replaceChildren.apply(list, cards);
+    } catch (error) {
+        list.replaceChildren();
+        console.warn('Application list load failed:', error && error.message);
+        status.textContent = 'We couldn’t load your applications. Check your connection and try again.';
+    }
+}
+
+async function markJobAsApplied(job, card) {
+    const message = card.querySelector('.application-track-status');
+    const button = card.querySelector('.application-track-btn');
+    button.disabled = true;
+    message.textContent = '';
+    try {
+        const session = await getStudentApplicationSession();
+        if (!session) {
+            message.textContent = 'Sign in with your IMCC account to track this application.';
+            return;
+        }
+        if (!job.applicationJobId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(job.applicationJobId)) {
+            message.textContent = 'This listing is not linked to an active application record and cannot be tracked yet.';
+            return;
+        }
+
+        const existing = await window.supabaseClient
+            .from('applications')
+            .select('id,status')
+            .eq('job_id', job.applicationJobId)
+            .eq('applicant_id', session.user.id)
+            .maybeSingle();
+        if (existing.error) throw existing.error;
+        if (existing.data) {
+            message.textContent = 'You already track this job as ' + getApplicationStatusLabel(existing.data.status).toLowerCase() + '.';
+            await loadMyApplications();
+            return;
+        }
+
+        const { error } = await window.supabaseClient
+            .from('applications')
+            .insert({
+                job_id: job.applicationJobId,
+                applicant_id: session.user.id,
+                status: 'submitted'
+            });
+        if (error) throw error;
+        message.textContent = 'This job was added to My Applications as applied.';
+        await loadMyApplications();
+    } catch (error) {
+        console.warn('Application tracking failed:', error && error.message);
+        message.textContent = 'We couldn’t track this job. Please try again.';
+    } finally {
+        button.disabled = false;
+    }
+}
+
+async function withdrawMyApplication(application, button) {
+    const status = document.getElementById('myApplicationsStatus');
+    button.disabled = true;
+    status.textContent = '';
+    try {
+        const session = await getStudentApplicationSession();
+        if (!session) return;
+        const { data, error } = await window.supabaseClient
+            .from('applications')
+            .update({ status: 'withdrawn' })
+            .eq('id', application.id)
+            .eq('applicant_id', session.user.id)
+            .eq('status', 'submitted')
+            .select('id')
+            .maybeSingle();
+        if (error) throw error;
+        if (!data) {
+            status.textContent = 'This application could not be withdrawn. Its status may have changed; refresh the list and try again.';
+            return;
+        }
+        await loadMyApplications();
+        if (!status.textContent) status.textContent = 'Application withdrawn.';
+    } catch (error) {
+        console.warn('Application withdrawal failed:', error && error.message);
+        status.textContent = 'We couldn’t withdraw this application. Please try again.';
+    } finally {
+        button.disabled = false;
     }
 }
 
@@ -1921,6 +2302,28 @@ function applyJob(jobTitle, url) {
     setAuthError('login', 'Please log in to apply for ' + jobTitle + '.');
 }
 
+async function logJobEvent(eventType, job, category) {
+    if (!window.supabaseClient) return;
+    try {
+        const { data, error: sessionError } = await window.supabaseClient.auth.getSession();
+        if (sessionError) throw sessionError;
+        const session = data && data.session;
+        if (!session || !session.user || !session.user.id) return;
+
+        const title = String(job && job.title || 'Untitled Position').replace(/\s+/g, ' ').trim().slice(0, 140);
+        const company = String(job && job.company || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+        const { error } = await window.supabaseClient.from('job_events').insert({
+            job_key: title + ' | ' + company,
+            category: String(category || job && job.category || 'General').replace(/\s+/g, ' ').trim().slice(0, 80),
+            event_type: eventType,
+            user_id: session.user.id
+        });
+        if (error) throw error;
+    } catch (error) {
+        console.warn('Job event could not be recorded:', error && error.message);
+    }
+}
+
 
 /* FILTER JOBS */
 
@@ -2189,10 +2592,12 @@ function showMatchReason(event, button, reason) {
 async function getCareerAiAuth() {
     const headers = { 'Content-Type': 'application/json' };
     let profile = {};
+    let authenticated = false;
     try {
         if (window.supabaseClient) {
             const { data } = await window.supabaseClient.auth.getSession();
-            if (data && data.session && data.session.access_token) {
+            if (data && data.session && data.session.access_token && isInstitutionalEmail(data.session.user && data.session.user.email)) {
+                authenticated = true;
                 headers['Authorization'] = 'Bearer ' + data.session.access_token;
                 const stored = JSON.parse(localStorage.getItem('imcc_user') || 'null');
                 const p = stored && stored.profile ? stored.profile : {};
@@ -2204,7 +2609,299 @@ async function getCareerAiAuth() {
             }
         }
     } catch (e) { /* anonymous request */ }
-    return { headers: headers, profile: profile };
+    return { headers: headers, profile: profile, authenticated: authenticated };
+}
+
+function renderProfileFeedbackList(containerId, title, items) {
+    const container = document.getElementById(containerId);
+    container.replaceChildren();
+    const heading = document.createElement('h5');
+    heading.textContent = title;
+    container.appendChild(heading);
+    if (!items.length) {
+        const empty = document.createElement('p');
+        empty.textContent = 'No items returned.';
+        container.appendChild(empty);
+        return;
+    }
+    const list = document.createElement('ul');
+    items.forEach(function(item) {
+        const entry = document.createElement('li');
+        entry.textContent = item;
+        list.appendChild(entry);
+    });
+    container.appendChild(list);
+}
+
+async function requestProfileFeedback() {
+    const button = document.getElementById('profileFeedbackButton');
+    const card = document.getElementById('profileFeedbackCard');
+    const status = document.getElementById('profileFeedbackStatus');
+    const stored = readLocalJson('imcc_user', null);
+    if (!stored || !stored.profile) return;
+
+    const auth = await getCareerAiAuth();
+    if (!auth.authenticated) {
+        showLogin();
+        setAuthError('login', 'Please sign in with your @imcc.edu.ph institutional Google account to get profile feedback.');
+        return;
+    }
+
+    card.hidden = false;
+    status.textContent = 'Reviewing your profile...';
+    button.disabled = true;
+    try {
+        const response = await fetch('/api/career-agent', {
+            method: 'POST',
+            headers: auth.headers,
+            body: JSON.stringify({
+                mode: 'profile-feedback',
+                course: stored.profile.course || '',
+                skills: stored.profile.skills || '',
+                experience_summary: stored.profile.experienceSummary || ''
+            })
+        });
+        const data = await response.json().catch(function() { return {}; });
+        if (!response.ok) throw new Error(data.error || 'Profile feedback is unavailable. Please try again.');
+
+        renderProfileFeedbackList('profileFeedbackStrengths', 'Strengths', Array.isArray(data.strengths) ? data.strengths : []);
+        renderProfileFeedbackList('profileFeedbackImprovements', 'Areas to improve', Array.isArray(data.improvements) ? data.improvements : []);
+        document.getElementById('profileFeedbackSummary').textContent = data.rewrittenSummary || '';
+        document.getElementById('saveProfileSummaryButton').disabled = !data.rewrittenSummary;
+        status.textContent = 'Feedback is only saved to your profile if you choose “Save rewritten summary”.';
+    } catch (error) {
+        status.textContent = error.message || 'Profile feedback is unavailable. Please try again.';
+    } finally {
+        button.disabled = false;
+    }
+}
+
+async function copyProfileFeedbackSummary() {
+    const summary = document.getElementById('profileFeedbackSummary').textContent;
+    const status = document.getElementById('profileFeedbackStatus');
+    if (!summary) return;
+    try {
+        await navigator.clipboard.writeText(summary);
+        status.textContent = 'Rewritten summary copied. It has not been saved to your profile.';
+    } catch (error) {
+        status.textContent = 'Could not copy the summary. Select and copy the text above.';
+    }
+}
+
+async function saveProfileFeedbackSummary() {
+    const saveButton = document.getElementById('saveProfileSummaryButton');
+    const status = document.getElementById('profileFeedbackStatus');
+    const summary = document.getElementById('profileFeedbackSummary').textContent.trim();
+    const stored = readLocalJson('imcc_user', null);
+    if (!summary || !stored || !stored.profile) return;
+
+    saveButton.disabled = true;
+    status.textContent = 'Saving rewritten summary...';
+    try {
+        const sessionResult = await window.supabaseClient.auth.getSession();
+        if (sessionResult.error) throw sessionResult.error;
+        const session = sessionResult.data && sessionResult.data.session;
+        if (!session) throw new Error('Your session has expired. Please sign in again.');
+        const userResult = await window.supabaseClient.auth.getUser();
+        if (userResult.error) throw userResult.error;
+        const user = userResult.data && userResult.data.user;
+        if (!user || user.id !== session.user.id || !isInstitutionalEmail(user.email)) {
+            throw new Error('Please sign in again with your @imcc.edu.ph account.');
+        }
+
+        const profile = Object.assign({}, stored.profile, { experienceSummary: summary });
+        const payload = {
+            id: user.id,
+            fullname: profile.fullname || 'User',
+            email: user.email,
+            phone: profile.phone || '',
+            course: profile.course || '',
+            skills: profile.skills || '',
+            experience_summary: summary,
+            photo_data_url: profile.photoDataUrl || null,
+            resume_data_url: profile.resumeDataUrl || null,
+            resume_file_name: profile.resumeFileName || ''
+        };
+        let saved = await supabaseSaveProfile(payload);
+        const firstSaveError = window.lastSupabaseProfileError;
+        if (!saved && firstSaveError && /resume_data_url|resume_file_name|column .* does not exist/i.test(firstSaveError.message || '')) {
+            delete payload.resume_data_url;
+            delete payload.resume_file_name;
+            saved = await supabaseSaveProfile(payload);
+        }
+        if (!saved) {
+            const saveError = window.lastSupabaseProfileError;
+            throw new Error(saveError && saveError.message ? 'Profile could not be saved: ' + saveError.message : 'Profile could not be saved. Please try again.');
+        }
+
+        const updatedUser = Object.assign({}, stored, { email: user.email, profile: profile });
+        localStorage.setItem('imcc_user', JSON.stringify(updatedUser));
+        const summaryElement = document.querySelector('#dashboardProfile .summary');
+        if (summaryElement) summaryElement.textContent = 'Summary: ' + summary;
+        status.textContent = 'Rewritten summary saved to your profile.';
+    } catch (error) {
+        status.textContent = error.message || 'Profile could not be saved. Please try again.';
+    } finally {
+        saveButton.disabled = false;
+    }
+}
+
+async function askCareerQuickQuestion(questionType) {
+    const prompt = document.getElementById('aiPrompt');
+    if (!prompt) return;
+
+    const questions = {
+        'fresh-graduates': 'What current jobs are suitable for fresh graduates?',
+        remote: 'What current remote jobs are available?',
+        iligan: 'What current jobs are available in Iligan City?'
+    };
+    let question = questions[questionType];
+
+    if (questionType === 'my-course') {
+        const auth = await getCareerAiAuth();
+        if (!auth.authenticated) {
+            showLogin();
+            setAuthError('login', 'Please sign in with your @imcc.edu.ph institutional Google account to find jobs for your course.');
+            return;
+        }
+        if (!auth.profile.course || !auth.profile.skills) {
+            const result = document.getElementById('recommendation-result');
+            result.classList.remove('recommendation-warning');
+            result.style.display = 'block';
+            result.textContent = 'Please complete your profile with your course and skills, then try this quick question again.';
+            return;
+        }
+        question = 'Find current jobs that match my course: ' + auth.profile.course + '. My skills are: ' + auth.profile.skills + '.';
+    }
+
+    if (!question) return;
+    prompt.value = question;
+    askCareerAI();
+}
+
+async function checkJobReadiness(job, card) {
+    const auth = await getCareerAiAuth();
+    if (!auth.authenticated) {
+        showLogin();
+        setAuthError('login', 'Please sign in with your @imcc.edu.ph institutional Google account to check your readiness for this job.');
+        return;
+    }
+    if (!auth.profile.course || !auth.profile.skills) {
+        const result = card.querySelector('.skills-gap-result');
+        card.classList.add('has-skills-gap');
+        result.textContent = 'Please complete your profile with your course and skills, then try again.';
+        card.classList.add('is-open');
+        return;
+    }
+
+    const button = card.querySelector('.readiness-btn');
+    const result = card.querySelector('.skills-gap-result');
+    card.classList.add('has-skills-gap');
+    result.textContent = 'Checking your skills against this role...';
+    card.classList.add('is-open');
+    button.disabled = true;
+    button.textContent = 'Checking...';
+
+    try {
+        const response = await fetch('/api/career-agent', {
+            method: 'POST',
+            headers: auth.headers,
+            body: JSON.stringify({
+                mode: 'skills-gap',
+                job: {
+                    title: job.title || '',
+                    company: job.company || '',
+                    category: job.tag || '',
+                    location: job.location || '',
+                    employmentType: job.employmentType || job.employment_type || '',
+                    description: job.description || ''
+                },
+                profile: auth.profile
+            })
+        });
+        const data = await response.json().catch(function() { return {}; });
+        if (!response.ok) throw new Error(data.error || 'Could not check your readiness. Please try again.');
+
+        const skillsHave = Array.isArray(data.skillsHave) ? data.skillsHave.slice(0, 4) : [];
+        const skillsToBuild = Array.isArray(data.skillsToBuild) ? data.skillsToBuild.slice(0, 4) : [];
+        result.textContent = [
+            data.answer || 'Here is a comparison of your skills with this role.',
+            'Skills you have: ' + (skillsHave.length ? skillsHave.join(', ') : 'No matching skills identified yet.'),
+            'Skills to build: ' + (skillsToBuild.length ? skillsToBuild.join(', ') : 'No specific skill gaps identified.')
+        ].join('\n\n');
+    } catch (error) {
+        result.textContent = error.message || 'Could not check your readiness. Please try again.';
+    } finally {
+        button.disabled = false;
+        button.textContent = 'How ready am I?';
+    }
+}
+
+function showLocalCareerRecommendations(result, prompt, profile, jobs, error) {
+    const ignoredTerms = new Set(['a', 'an', 'and', 'are', 'can', 'for', 'fit', 'fits', 'have', 'i', 'in', 'is', 'me', 'my', 'of', 'the', 'to', 'what', 'with', 'want']);
+    const terms = (String(prompt || '') + ' ' + (profile.course || '') + ' ' + (profile.skills || '') + ' ' + (profile.experienceSummary || ''))
+        .toLowerCase()
+        .match(/[a-z0-9+#.]{2,}/g)
+        || [];
+    const filteredTerms = terms
+        .filter(function(term) { return !ignoredTerms.has(term); });
+    const matches = jobs.map(function(job) {
+        const haystack = [job.title, job.company, job.category, job.location, job.employmentType, job.description]
+            .join(' ')
+            .toLowerCase();
+        const matchedTerms = filteredTerms.filter(function(term) { return haystack.includes(term); });
+        return { job: job, matchedTerms: matchedTerms, score: matchedTerms.length };
+    }).filter(function(match) {
+        return match.score > 0;
+    }).sort(function(a, b) {
+        return b.score - a.score;
+    }).slice(0, 3);
+
+    result.replaceChildren();
+    const notice = document.createElement('p');
+    notice.className = 'career-ai-answer';
+    notice.textContent = 'Career AI is unavailable right now (' + (error && error.message || 'connection error') + '). Showing local keyword-based matches instead.';
+    result.appendChild(notice);
+
+    if (!filteredTerms.length) {
+        const guidance = document.createElement('p');
+        guidance.textContent = 'Add your course or specific skills to your question or profile for relevant matches.';
+        result.appendChild(guidance);
+        return;
+    }
+
+    if (!matches.length) {
+        const guidance = document.createElement('p');
+        guidance.textContent = 'No current job listings matched those terms. Try adding your course, skills, or a role you are interested in.';
+        result.appendChild(guidance);
+        return;
+    }
+
+    const heading = document.createElement('h4');
+    heading.className = 'career-ai-matches-title';
+    heading.textContent = 'Local matches from current job listings';
+    result.appendChild(heading);
+    const list = document.createElement('ul');
+    list.className = 'career-ai-matches';
+    matches.forEach(function(match) {
+        const item = document.createElement('li');
+        const title = document.createElement('strong');
+        title.textContent = match.job.title + ' at ' + match.job.company;
+        item.appendChild(title);
+        const reason = document.createElement('p');
+        reason.textContent = 'Matched terms: ' + match.matchedTerms.join(', ');
+        item.appendChild(reason);
+        if (match.job.url && safeExternalUrl(match.job.url) !== '#') {
+            const link = document.createElement('a');
+            link.href = safeExternalUrl(match.job.url);
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.textContent = 'View application';
+            item.appendChild(link);
+        }
+        list.appendChild(item);
+    });
+    result.appendChild(list);
 }
 
 function askCareerAI() {
@@ -2241,7 +2938,9 @@ function askCareerAI() {
         sendButton.textContent = 'Thinking...';
     }
 
+    let fallbackProfile = {};
     getCareerAiAuth().then(function(auth) {
+    fallbackProfile = auth.profile;
     return fetch('/api/career-agent', {
         method: 'POST',
         headers: auth.headers,
@@ -2311,9 +3010,8 @@ function askCareerAI() {
         }
         document.getElementById('ai').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }).catch(function(error) {
-        result.replaceChildren();
         result.classList.add('recommendation-warning');
-        result.textContent = error.message || 'Career AI could not connect. Please try again.';
+        showLocalCareerRecommendations(result, text, fallbackProfile, jobs, error);
     }).finally(function() {
         if (sendButton) {
             sendButton.disabled = false;
@@ -2350,6 +3048,292 @@ function clearRecommendation() {
     result.style.display = 'none';
     result.replaceChildren();
     result.classList.remove('recommendation-warning');
+}
+
+let interviewPracticeState = null;
+let interviewPracticeTrigger = null;
+
+async function startInterviewPractice(job, trigger) {
+    const auth = await getCareerAiAuth();
+    if (!auth.authenticated) {
+        showLogin();
+        setAuthError('login', 'Please sign in with your @imcc.edu.ph institutional Google account to practice interviews.');
+        return;
+    }
+
+    const modal = document.getElementById('interviewModal');
+    const panel = document.getElementById('interviewQuestionPanel');
+    const label = document.getElementById('interviewJobLabel');
+    const status = document.getElementById('interviewStatus');
+    const feedback = document.getElementById('interviewFeedback');
+    interviewPracticeTrigger = trigger;
+    interviewPracticeState = null;
+    panel.hidden = true;
+    feedback.replaceChildren();
+    document.getElementById('interviewNextButton').hidden = true;
+    document.getElementById('interviewSubmitButton').disabled = true;
+    label.textContent = (job.title || 'This role') + ' at ' + (job.company || 'the selected company');
+    status.textContent = 'Preparing five interview questions...';
+    modal.classList.add('show');
+    modal.setAttribute('aria-hidden', 'false');
+    document.getElementById('interviewCloseButton').focus();
+
+    try {
+        const response = await fetch('/api/career-agent', {
+            method: 'POST',
+            headers: auth.headers,
+            body: JSON.stringify({
+                mode: 'interview',
+                step: 'start',
+                jobTitle: job.title || '',
+                company: job.company || ''
+            })
+        });
+        const data = await response.json().catch(function() { return {}; });
+        if (!response.ok) throw new Error(data.error || 'Interview practice could not start. Please try again.');
+        if (!Array.isArray(data.questions) || data.questions.length !== 5 ||
+            data.questions.some(function(question) { return typeof question !== 'string' || !question.trim(); })) {
+            throw new Error('Interview questions could not be loaded. Please try again.');
+        }
+
+        interviewPracticeState = {
+            headers: auth.headers,
+            questions: data.questions.slice(0, 5),
+            index: 0
+        };
+        status.textContent = '';
+        panel.hidden = false;
+        renderInterviewQuestion();
+    } catch (error) {
+        status.textContent = error.message || 'Interview practice could not start. Please try again.';
+        document.getElementById('interviewCloseButton').focus();
+    }
+}
+
+function renderInterviewQuestion() {
+    if (!interviewPracticeState) return;
+    const index = interviewPracticeState.index;
+    const answer = document.getElementById('interviewAnswer');
+    document.getElementById('interviewProgress').textContent = 'Question ' + (index + 1) + ' of ' + interviewPracticeState.questions.length;
+    document.getElementById('interviewQuestion').textContent = interviewPracticeState.questions[index];
+    answer.value = '';
+    answer.disabled = false;
+    document.getElementById('interviewCharacterCount').textContent = '0 / 800';
+    document.getElementById('interviewSubmitButton').disabled = false;
+    document.getElementById('interviewSubmitButton').hidden = false;
+    document.getElementById('interviewNextButton').hidden = true;
+    document.getElementById('interviewFeedback').replaceChildren();
+    document.getElementById('interviewStatus').textContent = '';
+    answer.focus();
+}
+
+function updateInterviewCharacterCount(textarea) {
+    document.getElementById('interviewCharacterCount').textContent = textarea.value.length + ' / 800';
+}
+
+function appendInterviewFeedbackList(container, headingText, entries) {
+    const heading = document.createElement('h5');
+    heading.textContent = headingText;
+    container.appendChild(heading);
+    if (!entries.length) {
+        const empty = document.createElement('p');
+        empty.textContent = 'No specific points to list.';
+        container.appendChild(empty);
+        return;
+    }
+    const list = document.createElement('ul');
+    entries.slice(0, 4).forEach(function(entry) {
+        const item = document.createElement('li');
+        item.textContent = entry;
+        list.appendChild(item);
+    });
+    container.appendChild(list);
+}
+
+async function submitInterviewAnswer() {
+    if (!interviewPracticeState) return;
+    const answer = document.getElementById('interviewAnswer');
+    const text = answer.value.trim();
+    const status = document.getElementById('interviewStatus');
+    const submit = document.getElementById('interviewSubmitButton');
+    if (!text) {
+        status.textContent = 'Write an answer before requesting feedback.';
+        answer.focus();
+        return;
+    }
+    if (text.length > 800) {
+        status.textContent = 'Keep your answer to 800 characters or fewer.';
+        return;
+    }
+
+    status.textContent = 'Reviewing your answer...';
+    submit.disabled = true;
+    try {
+        const response = await fetch('/api/career-agent', {
+            method: 'POST',
+            headers: interviewPracticeState.headers,
+            body: JSON.stringify({
+                mode: 'interview',
+                step: 'feedback',
+                question: interviewPracticeState.questions[interviewPracticeState.index],
+                answer: text
+            })
+        });
+        const data = await response.json().catch(function() { return {}; });
+        if (!response.ok) throw new Error(data.error || 'Feedback could not be loaded. Please try again.');
+        if (!Number.isInteger(data.score) || data.score < 1 || data.score > 5 ||
+            !Array.isArray(data.strengths) || !Array.isArray(data.improvements) ||
+            typeof data.sampleAnswer !== 'string') {
+            throw new Error('Interview feedback was incomplete. Please try again.');
+        }
+
+        const result = document.getElementById('interviewFeedback');
+        result.replaceChildren();
+        const score = document.createElement('p');
+        score.className = 'interview-score';
+        score.textContent = 'Score: ' + data.score + ' / 5';
+        result.appendChild(score);
+        appendInterviewFeedbackList(result, 'Strengths', data.strengths);
+        appendInterviewFeedbackList(result, 'Improvements', data.improvements);
+        const sampleHeading = document.createElement('h5');
+        sampleHeading.textContent = 'Sample answer';
+        result.appendChild(sampleHeading);
+        const sample = document.createElement('p');
+        sample.textContent = data.sampleAnswer;
+        result.appendChild(sample);
+        const disclaimer = document.createElement('p');
+        disclaimer.className = 'interview-disclaimer';
+        disclaimer.textContent = 'Practice feedback may be imperfect; verify important advice with a career adviser.';
+        result.appendChild(disclaimer);
+
+        answer.disabled = true;
+        submit.hidden = true;
+        document.getElementById('interviewNextButton').textContent =
+            interviewPracticeState.index === interviewPracticeState.questions.length - 1 ? 'Finish practice' : 'Next question';
+        document.getElementById('interviewNextButton').hidden = false;
+        status.textContent = '';
+    } catch (error) {
+        status.textContent = error.message || 'Feedback could not be loaded. Please try again.';
+    } finally {
+        if (!submit.hidden) submit.disabled = false;
+    }
+}
+
+function advanceInterview() {
+    if (!interviewPracticeState) return closeInterviewModal();
+    if (interviewPracticeState.index >= interviewPracticeState.questions.length - 1) {
+        closeInterviewModal();
+        return;
+    }
+    interviewPracticeState.index += 1;
+    renderInterviewQuestion();
+}
+
+function closeInterviewModal() {
+    const modal = document.getElementById('interviewModal');
+    if (!modal) return;
+    modal.classList.remove('show');
+    modal.setAttribute('aria-hidden', 'true');
+    interviewPracticeState = null;
+    if (interviewPracticeTrigger && document.contains(interviewPracticeTrigger)) {
+        interviewPracticeTrigger.focus();
+    }
+    interviewPracticeTrigger = null;
+}
+
+let coverLetterState = null;
+let coverLetterTrigger = null;
+
+async function draftApplicationMessage(job, trigger) {
+    const auth = await getCareerAiAuth();
+    if (!auth.authenticated) {
+        showLogin();
+        setAuthError('login', 'Please sign in with your @imcc.edu.ph institutional Google account to draft an application message.');
+        return;
+    }
+
+    coverLetterTrigger = trigger;
+    coverLetterState = { job: job, profile: auth.profile, headers: auth.headers };
+    const modal = document.getElementById('coverLetterModal');
+    document.getElementById('coverLetterJobLabel').textContent =
+        (job.title || 'This role') + ' at ' + (job.company || 'the selected company');
+    document.getElementById('coverLetterDraft').value = '';
+    document.getElementById('coverLetterStatus').textContent = '';
+    document.getElementById('coverLetterCopyButton').disabled = true;
+    document.getElementById('coverLetterRegenerateButton').disabled = true;
+    modal.classList.add('show');
+    modal.setAttribute('aria-hidden', 'false');
+    document.getElementById('coverLetterCloseButton').focus();
+    await requestCoverLetterDraft();
+}
+
+async function requestCoverLetterDraft() {
+    const state = coverLetterState;
+    if (!state) return;
+    const status = document.getElementById('coverLetterStatus');
+    const copyButton = document.getElementById('coverLetterCopyButton');
+    const regenerateButton = document.getElementById('coverLetterRegenerateButton');
+    status.textContent = 'Preparing your application message...';
+    copyButton.disabled = true;
+    regenerateButton.disabled = true;
+
+    try {
+        const response = await fetch('/api/career-agent', {
+            method: 'POST',
+            headers: state.headers,
+            body: JSON.stringify({
+                mode: 'cover-letter',
+                job: state.job,
+                profile: state.profile
+            })
+        });
+        const data = await response.json().catch(function() { return {}; });
+        if (!response.ok) throw new Error(data.error || 'The application message could not be drafted. Please try again.');
+        if (typeof data.draft !== 'string') {
+            throw new Error('The application message was incomplete. Please try again.');
+        }
+        const wordCount = data.draft.trim().split(/\s+/).filter(Boolean).length;
+        if (wordCount < 120 || wordCount > 180) {
+            throw new Error('The application message was outside the required length. Please regenerate it.');
+        }
+        if (coverLetterState !== state) return;
+        document.getElementById('coverLetterDraft').value = data.draft;
+        status.textContent = '';
+        copyButton.disabled = false;
+        regenerateButton.disabled = false;
+    } catch (error) {
+        if (coverLetterState !== state) return;
+        status.textContent = error.message || 'The application message could not be drafted. Please try again.';
+        regenerateButton.disabled = false;
+    }
+}
+
+function regenerateCoverLetter() {
+    requestCoverLetterDraft();
+}
+
+async function copyCoverLetterDraft() {
+    const draft = document.getElementById('coverLetterDraft').value.trim();
+    const status = document.getElementById('coverLetterStatus');
+    if (!draft) return;
+    try {
+        await navigator.clipboard.writeText(draft);
+        status.textContent = 'Draft copied. Review and edit it before sending.';
+    } catch (error) {
+        status.textContent = 'Could not copy automatically. Select the draft text and copy it manually.';
+    }
+}
+
+function closeCoverLetterModal() {
+    const modal = document.getElementById('coverLetterModal');
+    if (!modal) return;
+    modal.classList.remove('show');
+    modal.setAttribute('aria-hidden', 'true');
+    coverLetterState = null;
+    if (coverLetterTrigger && document.contains(coverLetterTrigger)) {
+        coverLetterTrigger.focus();
+    }
+    coverLetterTrigger = null;
 }
 
 

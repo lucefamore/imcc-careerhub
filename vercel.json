@@ -1,6 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "cleanUrls": true,
+  "outputDirectory": ".",
   "functions": {
     "api/career-agent.js": { "maxDuration": 30 }
   },

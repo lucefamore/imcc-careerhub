@@ -285,7 +285,7 @@ module.exports = async function handler(req, res) {
     if (err && err.status === 429) {
       return res.status(503).json({ error: 'Career AI is busy right now. Please try again in a minute.' });
     }
-    return res.status(502).json({ error: 'Career AI is temporarily unavailable. Please try again.' });
+   return res.status(502).json({ error: 'Career AI is temporarily unavailable.' + (process.env.CAREER_AI_DEBUG ? ' [' + String(err && err.message).slice(0, 200) + ']' : '') });
   } finally {
     clearTimeout(timer);
   }

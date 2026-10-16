@@ -2292,8 +2292,9 @@ function downloadUploadedResume() {
 }
 
 function applyJob(jobTitle, url) {
-    if (url) {
-        window.open(url, '_blank');
+    const safeUrl = url ? safeExternalUrl(url) : '';
+    if (safeUrl && safeUrl !== '#') {
+        window.open(safeUrl, '_blank', 'noopener,noreferrer');
         return;
     }
 
@@ -3533,6 +3534,5 @@ function recommendJob() {
 
 </script>
 
-<script src="flowise-widget.js" defer></script>
 </body>
 </html>

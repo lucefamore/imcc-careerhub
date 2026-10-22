@@ -870,17 +870,31 @@ async function openUserDashboard() {
         showLogin();
         return;
     }
+    const { data, error } = await window.supabaseClient.auth.getSession();
+    const session = data && data.session;
+    const sessionUser = session && session.user;
+    if (error) {
+        console.warn('Supabase session check failed:', error.message);
+        showLogin();
+        setAuthError('login', 'Unable to verify your sign-in session. Please try again.');
+        return;
+    }
+    if (!sessionUser) {
+        showLogin();
+        return;
+    }
+    if (!isInstitutionalEmail(sessionUser.email)) {
+        await window.supabaseClient.auth.signOut();
+        showLogin();
+        setAuthError('login', getInstitutionalEmailError(sessionUser.email, false));
+        return;
+    }
+
     const cachedUser = readLocalJson('imcc_user', null);
     if (cachedUser && cachedUser.profile) {
         document.body.classList.remove('auth-locked');
         closeAuthModal();
-        showDashboard(cachedUser.profile, cachedUser.email);
-        return;
-    }
-    const { data, error } = await window.supabaseClient.auth.getSession();
-    const sessionUser = data && data.session ? data.session.user : null;
-    if (error || !sessionUser || !isInstitutionalEmail(sessionUser.email)) {
-        showLogin();
+        showDashboard(cachedUser.profile, sessionUser.email, sessionUser.id);
         return;
     }
     document.body.classList.remove('auth-locked');
@@ -2292,9 +2306,8 @@ function downloadUploadedResume() {
 }
 
 function applyJob(jobTitle, url) {
-    const safeUrl = url ? safeExternalUrl(url) : '';
-    if (safeUrl && safeUrl !== '#') {
-        window.open(safeUrl, '_blank', 'noopener,noreferrer');
+    if (url) {
+        window.open(url, '_blank');
         return;
     }
 
@@ -3534,5 +3547,6 @@ function recommendJob() {
 
 </script>
 
+<script src="flowise-widget.js" defer></script>
 </body>
 </html>

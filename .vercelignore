@@ -1,7 +1,6 @@
 .git
 .github
 .dockerignore
-Dockerfile
 *.sql
 *.md
 .gemini

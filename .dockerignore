@@ -1,0 +1,9 @@
+.git
+.github
+.gitignore
+.dockerignore
+*.sql
+*.md
+.gemini
+.agents
+.history

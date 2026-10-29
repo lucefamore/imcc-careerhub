@@ -1833,3 +1833,92 @@ nav {
 .career-chat-recommendations{margin:10px 0 0;padding:12px;border:1px solid #f4c0da;border-radius:12px;background:#fff8fc}.career-chat-recommendations>strong{display:block;color:#9c1458;margin-bottom:8px;font-size:13px}.career-chat-job{padding:9px 0;border-top:1px solid #f6dce9}.career-chat-job strong{font-size:13px}.career-chat-job p{margin:3px 0;color:#756579;font-size:12px}.career-chat-job a{font-size:12px;color:#c20b68;font-weight:700}
 @media(max-width:850px){.career-chat-layout{grid-template-columns:1fr}.career-chat-info{padding:28px 22px}.career-chat-messages{height:330px}.career-chat-benefits{gap:16px}}
 @media(max-width:480px){.career-chat-header{padding:14px}.career-chat-messages{padding:14px 10px;height:330px}.career-chat-bubble{max-width:90%;font-size:13px}.career-chat-benefits{grid-template-columns:1fr}.career-chat-info-robot{font-size:48px}.career-chat-info{padding:24px 18px}.career-chat-suggestions{padding:8px 10px}.career-chat-compose{margin-left:10px;margin-right:10px}}
+
+
+/* IMCC Careers branded administrator login */
+.admin-login-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 4px 0 12px;
+}
+.admin-login-icon {
+    width: 42px;
+    height: 42px;
+    display: grid;
+    place-items: center;
+    border-radius: 13px;
+    color: #fff;
+    font-size: 24px;
+    background: linear-gradient(135deg, #a70f5c, #d41472 62%, #ed5d9d);
+    box-shadow: 0 6px 16px rgba(212, 20, 114, .2);
+}
+.admin-login-eyebrow {
+    color: var(--primary-dark);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+}
+.auth-card h3.admin-login-title {
+    margin-bottom: 8px;
+    font-size: 25px;
+}
+.admin-field-label {
+    margin: 2px 0 -7px;
+    color: var(--primary-dark);
+    font-size: 12px;
+    font-weight: 700;
+}
+.admin-password-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+.admin-password-wrap input {
+    width: 100%;
+    padding-right: 62px;
+}
+.admin-password-toggle {
+    position: absolute;
+    right: 10px;
+    padding: 5px 7px;
+    border-radius: 6px;
+    color: var(--primary-dark);
+    background: var(--magenta-wash);
+    font-size: 11px;
+    font-weight: 700;
+}
+.admin-login-submit {
+    width: 100%;
+    min-height: 46px;
+    margin-top: 5px;
+    border-radius: 8px;
+    background: linear-gradient(100deg, #a70f5c, #d41472 65%, #e83f8c);
+    color: #fff;
+    font: inherit;
+    font-weight: 800;
+    box-shadow: 0 7px 18px rgba(212, 20, 114, .2);
+    transition: transform .15s ease, box-shadow .15s ease;
+}
+.admin-login-submit:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 9px 22px rgba(212, 20, 114, .27);
+}
+.admin-login-submit:disabled {
+    opacity: .7;
+    cursor: wait;
+    transform: none;
+}
+#adminLoginView .auth-form input {
+    width: 100%;
+    min-height: 44px;
+    box-sizing: border-box;
+    background: #fffafd;
+    border: 1px solid #f0c2d8;
+    border-radius: 8px;
+    color: #2d1830;
+}
+#adminLoginView .auth-form input:focus {
+    outline: 3px solid rgba(212, 20, 114, .12);
+    border-color: var(--primary);
+}

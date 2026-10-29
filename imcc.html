@@ -286,14 +286,22 @@
         </div>
 
         <div class="auth-view" id="adminLoginView">
-            <h3>IMCC-Careers Admin</h3>
-            <p class="auth-note">Use your authorized institutional Google account to manage the marketplace.</p>
-            <form class="auth-form">
-                <button id="admin-google-login" class="google-signin-btn" type="button" aria-label="Admin sign in with Google">
-                    <span class="google-mark" aria-hidden="true">G</span>
-                    <span>Continue as Admin</span>
-                </button>
-                <p class="form-error" id="adminLoginError"></p>
+            <div class="admin-login-brand">
+                <div class="admin-login-icon" aria-hidden="true">✦</div>
+                <span class="admin-login-eyebrow">IMCC CAREERS</span>
+            </div>
+            <h3 class="admin-login-title">Admin Login</h3>
+            <p class="auth-note">Sign in with your authorized administrator credentials.</p>
+            <form class="auth-form" id="adminLoginForm" onsubmit="handleAdminLogin(event)">
+                <label class="admin-field-label" for="adminLoginEmail">Admin email</label>
+                <input id="adminLoginEmail" name="email" type="email" autocomplete="username" placeholder="Enter admin email" required>
+                <label class="admin-field-label" for="adminLoginPassword">Password</label>
+                <div class="admin-password-wrap">
+                    <input id="adminLoginPassword" name="password" type="password" autocomplete="current-password" placeholder="Enter password" required>
+                    <button class="admin-password-toggle" type="button" onclick="toggleAdminPassword()" aria-label="Show or hide password">Show</button>
+                </div>
+                <button id="adminLoginSubmit" class="admin-login-submit" type="submit">Sign in</button>
+                <p class="form-error" id="adminLoginError" role="alert"></p>
                 <button class="auth-admin-link" type="button" onclick="showLogin()">Back to user sign in</button>
             </form>
         </div>
@@ -843,6 +851,55 @@ function showAdminLogin() {
     showAuthView('admin');
     openAuthModal();
     clearAuthErrors('adminLogin');
+}
+
+function toggleAdminPassword() {
+    const input = document.getElementById('adminLoginPassword');
+    const button = document.querySelector('.admin-password-toggle');
+    if (!input || !button) return;
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    button.textContent = show ? 'Hide' : 'Show';
+}
+
+async function handleAdminLogin(event) {
+    if (event && typeof event.preventDefault === 'function') event.preventDefault();
+    const emailInput = document.getElementById('adminLoginEmail');
+    const passwordInput = document.getElementById('adminLoginPassword');
+    const submitButton = document.getElementById('adminLoginSubmit');
+    const email = String(emailInput && emailInput.value || '').trim().toLowerCase();
+    const password = String(passwordInput && passwordInput.value || '');
+    clearAuthErrors('adminLogin');
+
+    if (!isInstitutionalEmail(email)) {
+        return setAuthError('adminLogin', 'Use your authorized @imcc.edu.ph admin email and password.');
+    }
+    if (!hasSupabaseConfig()) {
+        return setAuthError('adminLogin', 'Account service is not configured. Please contact the system administrator.');
+    }
+
+    if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.textContent = 'Signing in…';
+    }
+    try {
+        const { data, error } = await window.supabaseClient.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        if (!data || !data.user) throw new Error('Sign-in did not return an authenticated user.');
+        sessionStorage.setItem('imcc_admin_login_requested', '1');
+        await restoreSupabaseSession();
+    } catch (error) {
+        console.warn('Admin password sign-in failed:', error && error.message);
+        const message = String(error && error.message || '').toLowerCase();
+        setAuthError('adminLogin', message.includes('invalid login credentials')
+            ? 'Incorrect admin email or password.'
+            : 'Unable to sign in. Check your credentials or contact the system administrator.');
+    } finally {
+        if (submitButton) {
+            submitButton.disabled = false;
+            submitButton.textContent = 'Sign in';
+        }
+    }
 }
 
 const MANAGED_JOBS_STORAGE_KEY = 'imcc_managed_jobs';
@@ -1417,7 +1474,6 @@ async function signInWithGoogle(triggerButton) {
 
 document.addEventListener('DOMContentLoaded', function() {
     const googleLoginButton = document.getElementById('google-login');
-    const adminGoogleLoginButton = document.getElementById('admin-google-login');
     const continueLoginButton = document.getElementById('continueVerifiedLogin');
     const adminContinueLoginButton = document.getElementById('adminContinueVerifiedLogin');
 
@@ -1425,12 +1481,6 @@ document.addEventListener('DOMContentLoaded', function() {
         googleLoginButton.addEventListener('click', function() {
             sessionStorage.removeItem('imcc_admin_login_requested');
             signInWithGoogle(googleLoginButton);
-        });
-    }
-    if (adminGoogleLoginButton) {
-        adminGoogleLoginButton.addEventListener('click', function() {
-            sessionStorage.setItem('imcc_admin_login_requested', '1');
-            signInWithGoogle(adminGoogleLoginButton);
         });
     }
 });

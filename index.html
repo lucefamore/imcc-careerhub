@@ -168,7 +168,7 @@
             <h3 id="myApplicationsTitle">My Applications</h3>
             <p id="myApplicationsStatus" role="status" aria-live="polite"></p>
             <div id="myApplicationsList" class="my-application-list">
-                <p class="muted">You haven’t submitted any applications yet.</p>
+                <p class="muted">You haven’t marked any jobs as applied yet. Choose “Mark as applied” on a job to track it here.</p>
             </div>
         </section>
 
@@ -1785,7 +1785,7 @@ async function loadMyApplications() {
             list.replaceChildren();
             const empty = document.createElement('p');
             empty.className = 'muted';
-        empty.textContent = 'You haven’t submitted any applications yet.';
+            empty.textContent = 'You haven’t marked any jobs as applied yet. Choose “Mark as applied” on a job to track it here.';
             list.appendChild(empty);
             return;
         }

@@ -102,36 +102,45 @@
 </section>
 
 
-<!-- AI CAREER CHATBOT -->
-<section class="ai-section" id="ai">
-  <div class="ai-container career-chat-layout">
-    <div class="career-chat-card">
-      <div class="career-chat-header">
-        <div class="career-chat-avatar" aria-hidden="true">🤖</div>
-        <div><h3>IMCC Career Assistant</h3><p><span class="career-chat-online-dot"></span> AI-powered career support</p></div>
-        <button class="career-chat-clear" type="button" onclick="clearCareerChat()" aria-label="Clear conversation" title="Clear conversation">↻</button>
+
+<!-- FLOATING IMCC AI CAREER CHATBOT -->
+<div class="career-chat-widget" id="ai">
+  <button class="career-chat-launcher" id="careerChatLauncher" type="button"
+          aria-label="Open IMCC Career Assistant" aria-expanded="false" aria-controls="careerChatPanel"
+          onclick="toggleCareerChat()">
+    <span class="career-chat-launcher-icon" aria-hidden="true">✦</span>
+    <span class="career-chat-launcher-label">Chat with AI</span>
+    <span class="career-chat-launcher-badge" aria-hidden="true"></span>
+  </button>
+
+  <section class="career-chat-panel" id="careerChatPanel" aria-label="IMCC Career Assistant" aria-hidden="true">
+    <div class="career-chat-header">
+      <div class="career-chat-avatar" aria-hidden="true">✦</div>
+      <div class="career-chat-heading">
+        <h3>IMCC Career Assistant</h3>
+        <p><span class="career-chat-online-dot"></span> AI career support</p>
       </div>
-      <div class="career-chat-messages" id="careerChatMessages" role="log" aria-live="polite" aria-label="Chat messages">
-        <div class="career-chat-message assistant"><span class="career-chat-mini-avatar" aria-hidden="true">🤖</span><div class="career-chat-bubble">Hi! I'm your IMCC Career Assistant 🤖<br>Ask me about job opportunities, resume writing, interview tips, career paths, or skills you can build. I can also suggest openings from the jobs listed on this website.</div></div>
-      </div>
-      <div class="career-chat-suggestions" aria-label="Suggested questions">
-        <button type="button" onclick="useCareerChatSuggestion('Recommend jobs that match my course and skills')">Find matching jobs</button>
-        <button type="button" onclick="useCareerChatSuggestion('Help me prepare for a job interview')">Interview tips</button>
-        <button type="button" onclick="useCareerChatSuggestion('How can I improve my resume?')">Improve my resume</button>
-      </div>
-      <form class="career-chat-compose" id="careerChatForm" onsubmit="sendCareerChatMessage(event)">
-        <textarea id="careerChatInput" rows="1" maxlength="1600" placeholder="Ask your career question..." aria-label="Your message" required></textarea>
-        <button id="careerChatSend" type="submit" aria-label="Send message" title="Send message">➤</button>
-      </form>
-      <p id="careerChatStatus" class="career-chat-status" role="status" aria-live="polite">Sign in with your @imcc.edu.ph account to chat with the AI.</p>
+      <button class="career-chat-clear" type="button" onclick="clearCareerChat()" aria-label="Clear conversation" title="Clear conversation">↻</button>
+      <button class="career-chat-close" type="button" onclick="toggleCareerChat(false)" aria-label="Close chat">×</button>
     </div>
-    <aside class="career-chat-info">
-      <div class="career-chat-info-robot" aria-hidden="true">🤖</div>
-      <h2>IMCC Career Assistant</h2>
-      <h3>Your AI-powered job search companion</h3>
-      <p>Get personalized career guidance, ask questions in natural language, and explore relevant openings from the IMCC Careers job feed.</p>
-      <div class="career-chat-benefits">
-        <div><span>✦</span><section><strong>Smart job suggestions</strong><p>Explore listings related to your course and skills.</p></section></div>
+    <div class="career-chat-welcome">
+      <strong>Hi there! 👋</strong>
+      <span>I'm your IMCC AI Career Assistant. Ask me about jobs, resumes, interviews, career paths, or skills to build.</span>
+    </div>
+    <div class="career-chat-messages" id="careerChatMessages" role="log" aria-live="polite" aria-label="Chat messages"></div>
+    <div class="career-chat-suggestions" aria-label="Suggested questions">
+      <button type="button" onclick="useCareerChatSuggestion('Recommend jobs that match my course and skills')">Find matching jobs</button>
+      <button type="button" onclick="useCareerChatSuggestion('Help me prepare for a job interview')">Interview tips</button>
+      <button type="button" onclick="useCareerChatSuggestion('How can I improve my resume?')">Improve my resume</button>
+    </div>
+    <form class="career-chat-compose" id="careerChatForm" onsubmit="sendCareerChatMessage(event)">
+      <textarea id="careerChatInput" rows="1" maxlength="1600" placeholder="Ask your career question..." aria-label="Your message" required></textarea>
+      <button id="careerChatSend" type="submit" aria-label="Send message" title="Send message">➤</button>
+    </form>
+    <p id="careerChatStatus" class="career-chat-status" role="status" aria-live="polite">Sign in with your @imcc.edu.ph account to chat with the AI.</p>
+  </section>
+</div>
+</div>
         <div><span>☏</span><section><strong>Ask anything</strong><p>Get help with resumes, interviews, and career planning.</p></section></div>
         <div><span>🧠</span><section><strong>Real AI model</strong><p>Responses are generated by a server-side language model, not fixed demo replies.</p></section></div>
         <div><span>♡</span><section><strong>Practical guidance</strong><p>Build skills and prepare for your next application.</p></section></div>
@@ -3190,6 +3199,29 @@ function scrollToRecommendedJob(event, title) {
     }
 }
 
+</script>
+
+
+<script>
+function toggleCareerChat(forceOpen) {
+  const panel = document.getElementById('careerChatPanel');
+  const launcher = document.getElementById('careerChatLauncher');
+  if (!panel || !launcher) return;
+  const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : !panel.classList.contains('is-open');
+  panel.classList.toggle('is-open', shouldOpen);
+  panel.setAttribute('aria-hidden', String(!shouldOpen));
+  launcher.setAttribute('aria-expanded', String(shouldOpen));
+  launcher.classList.toggle('is-active', shouldOpen);
+  if (shouldOpen) {
+    if (!document.querySelector('#careerChatMessages .career-chat-message')) {
+      appendCareerChatMessage('assistant', "Hi! I'm your IMCC Career Assistant. Ask me about jobs, resumes, interviews, career paths, or skills you can build.");
+    }
+    window.setTimeout(() => document.getElementById('careerChatInput')?.focus(), 180);
+  }
+}
+document.addEventListener('keydown', function(event) {
+  if (event.key === 'Escape') toggleCareerChat(false);
+});
 </script>
 
 </body>

@@ -4,8 +4,6 @@
   "private": true,
   "description": "IMCC Careers Job Marketplace",
   "scripts": {
-    "build": "node build.js",
-    "dev": "npx vercel dev",
-    "start": "npx vercel dev"
+    "build": "node build.js"
   }
 }
